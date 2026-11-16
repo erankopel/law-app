@@ -466,7 +466,12 @@ $('#aform').addEventListener('submit', async e => {
       status.textContent = 'מפתח ה־API של קלוד עדיין לא הוגדר בשרת, ולכן החיפוש החכם לא פעיל. חיפוש הפסיקה והחקיקה עובדים כרגיל.';
       return;
     }
-    if(!res.ok || !data.answer) throw new Error('bad response');
+    if(!res.ok){
+      status.className = 'status err';
+      status.textContent = 'שגיאה מהשרת (' + res.status + '): ' + (data.error || '') + (data.detail ? ' — ' + data.detail : '');
+      return;
+    }
+    if(!data.answer) throw new Error('bad response');
     const srcs = (data.sources || []).map(s => `<a href="${esc(s.url)}" target="_blank" rel="noopener">🔗 ${esc(s.title)}</a>`).join('');
     chat.insertAdjacentHTML('beforeend', `<div class="msg ai">${esc(data.answer)}${srcs ? `<div class="srclinks">${srcs}</div>` : ''}</div>`);
     status.textContent = '';
