@@ -872,7 +872,7 @@ $('#skform').addEventListener('submit', async e => {
     $('#sk-results').innerHTML = html;
     status.textContent = 'הסתיים. ' + (routeNote ? routeNote + ' · ' : '') + 'התוצאה נשמרה גם בהיסטוריה בלשונית שאל AI.';
   }catch(err){
-    if(err.message !== 'unauthorized'){ status.className = 'status err'; status.textContent = 'ההרצה נכשלה. נסה שוב בעוד רגע.'; }
+    if(err.message !== 'unauthorized'){ status.className = 'status err'; status.textContent = 'ההרצה נכשלה: ' + err.message; }
   }finally{
     clearInterval(timer);
     btn.disabled = false;
