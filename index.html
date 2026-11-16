@@ -563,7 +563,6 @@ function exchangeHtml(en, open){
       <span class="hist-chev2">${open ? '▾' : '▸'}</span>
     </button>
     <div class="hist-body${open ? '' : ' hidden'}">
-      <div class="msg user">${esc(en.q)}</div>
       <div class="msg ai">${esc(en.answer)}${srcs ? `<div class="srclinks">${srcs}</div>` : ''}
         <div class="msg-actions">
           <button type="button" data-dl="${esc(en.id)}">📄 הורד כ־Word</button>
