@@ -852,21 +852,30 @@ $('#skform').addEventListener('submit', async e => {
     status.textContent = (routeNote ? routeNote + ' · ' : '') + 'הסקילים עובדים... ' + s + ' שנ׳ (הרצה יכולה לקחת דקה עד שלוש, לא לסגור את הדף)';
   }, 1000);
   try{
-    const res = await apiFetch('/skill-run', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({skills, task, material})});
-    const data = await res.json().catch(() => ({}));
-    if(!res.ok){ status.className = 'status err'; status.textContent = 'שגיאה מהשרת (' + res.status + '): ' + (data.error || '') + (data.detail ? ' — ' + data.detail : ''); return; }
-    if(!data.answer && !(data.files || []).length) throw new Error('bad response');
+    let messages = null, containerId = null, answer = '', stepSources = [], stepFiles = [], done = false;
+    for(let step = 0; step < 40 && !done; step++){
+      const res = await apiFetch('/skill-step', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({skills, task, material, messages, container_id: containerId})});
+      const data = await res.json().catch(() => ({}));
+      if(!res.ok){ status.className = 'status err'; status.textContent = 'שגיאה מהשרת (' + res.status + '): ' + (data.error || '') + (data.detail ? ' — ' + data.detail : ''); return; }
+      containerId = data.container_id || containerId;
+      if(data.text) answer = answer ? answer + '\n' + data.text : data.text;
+      (data.sources || []).forEach(s => { if(!stepSources.some(x => x.url === s.url)) stepSources.push(s); });
+      (data.files || []).forEach(f => { if(!stepFiles.some(x => x.id === f.id)) stepFiles.push(f); });
+      messages = data.messages || messages;
+      done = !!data.done;
+    }
+    if(!answer && !stepFiles.length) throw new Error('bad response');
     const entry = {
       id: 'h' + Date.now(), ts: Date.now(),
       q: ('🧩 ' + names.join(', ') + ' — ' + task).slice(0, 500),
-      answer: data.answer || '(הסקיל יצר קבצים; ראה קישורי ההורדה בלשונית הסקילים)',
-      sources: data.sources || [],
+      answer: answer || '(הסקיל יצר קבצים; ראה קישורי ההורדה בלשונית הסקילים)',
+      sources: stepSources.slice(0, 10),
     };
     addHistory(entry);
     let html = exchangeHtml(entry, true);
-    if((data.files || []).length){
+    if(stepFiles.length){
       html += `<div class="result"><h3>📁 קבצים שהסקיל יצר</h3><div class="links">` +
-        data.files.map(f => `<button type="button" class="chip" data-file="${esc(f.id)}" data-fname="${esc(f.name || '')}">⬇ ${esc(f.name || 'קובץ')}</button>`).join('') +
+        stepFiles.map(f => `<button type="button" class="chip" data-file="${esc(f.id)}" data-fname="${esc(f.name || '')}">⬇ ${esc(f.name || 'קובץ')}</button>`).join('') +
         `</div></div>`;
     }
     $('#sk-results').innerHTML = html;

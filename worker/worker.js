@@ -462,6 +462,66 @@ async function handleSkillRun(request, env) {
   return json({ answer, sources: uniq.slice(0, 10), files: [...fileMap.values()].slice(0, 10) });
 }
 
+async function handleSkillStep(request, env) {
+  if (!env.ANTHROPIC_API_KEY) return json({ error: 'no_key' }, 501);
+  let body;
+  try { body = await request.json(); } catch (e) { return json({ error: 'bad_json' }, 400); }
+  const skillsIn = Array.isArray(body.skills) ? body.skills : [];
+  const skills = skillsIn
+    .filter(s => s && typeof s.skill_id === 'string' && s.skill_id)
+    .slice(0, 20)
+    .map(s => ({ type: s.type === 'anthropic' ? 'anthropic' : 'custom', skill_id: s.skill_id, version: 'latest' }));
+  if (!skills.length) return json({ error: 'no_skills' }, 400);
+  let messages = Array.isArray(body.messages) && body.messages.length ? body.messages : null;
+  if (!messages) {
+    const task = String(body.task || '').trim().slice(0, 4000);
+    if (!task) return json({ error: 'empty_task' }, 400);
+    const material = String(body.material || '').trim().slice(0, 30000);
+    const prompt = material ? task + '\n\nחומר רקע:\n' + material : task;
+    messages = [{ role: 'user', content: prompt }];
+  }
+  const model = String(env.MODEL || DEFAULT_MODEL);
+  const effortRaw = String(env.EFFORT || 'high').toLowerCase();
+  const effort = EFFORTS.includes(effortRaw) ? effortRaw : null;
+  const container = body.container_id ? { id: String(body.container_id), skills } : { skills };
+  const payload = { model, max_tokens: 32000, system: SKILL_SYSTEM, tools: SKILL_TOOLS, messages, container };
+  if (effort) payload.output_config = { effort };
+  let res;
+  try {
+    res = await fetch(ANTHROPIC, { method: 'POST', headers: anthropicHeaders(env), body: JSON.stringify(payload) });
+  } catch (e) {
+    return json({ error: 'upstream', detail: String((e && e.message) || e).slice(0, 300) }, 502);
+  }
+  if (!res.ok) {
+    const t = await res.text();
+    return json({ error: 'anthropic_' + res.status, detail: t.slice(0, 300) }, 502);
+  }
+  const data = await res.json();
+  const containerId = (data.container && data.container.id) || body.container_id || null;
+  const found = [];
+  collectFileIds(data.content, found);
+  const files = [...new Map(found.map(f => [f.id, f])).values()];
+  const text = (data.content || []).filter(b => b.type === 'text').map(b => b.text).join('\n').trim();
+  const sources = [];
+  messages.push({ role: 'assistant', content: data.content });
+  const toolUses = (data.content || []).filter(b => b.type === 'tool_use' && TOOLS.some(t => t.name === b.name));
+  if (toolUses.length) {
+    const results = [];
+    for (const tu of toolUses) {
+      try {
+        const out = await runTool(tu.name, tu.input || {}, sources);
+        results.push({ type: 'tool_result', tool_use_id: tu.id, content: JSON.stringify(out).slice(0, 24000) });
+      } catch (e) {
+        results.push({ type: 'tool_result', tool_use_id: tu.id, content: 'שגיאה בביצוע הכלי: ' + e.message, is_error: true });
+      }
+    }
+    messages.push({ role: 'user', content: results });
+    return json({ text, sources, files, container_id: containerId, messages, done: false, stop_reason: data.stop_reason || '' });
+  }
+  const done = data.stop_reason !== 'pause_turn';
+  return json({ text, sources, files, container_id: containerId, messages, done, stop_reason: data.stop_reason || '' });
+}
+
 const ROUTE_SYSTEM = [
   'אתה מנתב משימות משפטיות ואקדמיות למיומנויות (Skills) מתוך קטלוג נתון. קרא את המשימה ובחר את המיומנויות המתאימות לה באמת, בין אחת לארבע.',
   'החזר JSON בלבד, בלי שום טקסט נוסף, במבנה: {"skills": ["שם-מיומנות"], "reason": "הסבר קצר בעברית לבחירה"}.',
@@ -570,6 +630,7 @@ export default {
       if (path === '/api/ask' && request.method === 'POST') return await handleAsk(request, env);
       if (path === '/api/skills' && request.method === 'GET') return await handleSkillsList(env);
       if (path === '/api/skill-run' && request.method === 'POST') return await handleSkillRun(request, env);
+      if (path === '/api/skill-step' && request.method === 'POST') return await handleSkillStep(request, env);
       if (path === '/api/skill-route' && request.method === 'POST') return await handleSkillRoute(request, env);
       if (path === '/api/file' && request.method === 'GET') return await handleFile(url, env);
       return json({ error: 'not_found' }, 404);
