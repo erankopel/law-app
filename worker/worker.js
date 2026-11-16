@@ -71,12 +71,25 @@ async function searchLaws(search) {
   return res.json();
 }
 
-async function verdictText(id) {
+async function verdictText(id, offset = 0) {
   const res = await fetch(GN + '/verdict/' + encodeURIComponent(id), { headers: UA });
   if (!res.ok) throw new Error('gn verdict ' + res.status);
   const html = await res.text();
   const noScripts = html.replace(/<script[\s\S]*?<\/script>/gi, ' ').replace(/<style[\s\S]*?<\/style>/gi, ' ');
-  return stripHtml(noScripts).slice(0, 16000);
+  // The ruling body lives in whitespace-pre-wrap blocks; everything else on the page is chrome.
+  const blocks = [];
+  const re = /<(\w+)[^>]*class="[^"]*whitespace-pre-wrap[^"]*"[^>]*>([\s\S]*?)<\/\1>/g;
+  let m;
+  while ((m = re.exec(noScripts)) !== null) {
+    const t = stripHtml(m[2]);
+    if (t) blocks.push(t);
+  }
+  const full = blocks.length ? blocks.join('\n') : stripHtml(noScripts);
+  const CHUNK = 18000;
+  const start = Math.max(0, offset | 0);
+  const text = full.slice(start, start + CHUNK);
+  const next = start + CHUNK < full.length ? start + CHUNK : null;
+  return { text, total_chars: full.length, next_offset: next };
 }
 
 async function wikiText(title) {
@@ -148,10 +161,13 @@ const TOOLS = [
   },
   {
     name: 'get_verdict_text',
-    description: 'קריאת הנוסח המלא של פסק דין מתוך דף פסק הדין בגילוי נאות, לפי שדה id שהוחזר מ-search_verdicts. חובה לקרוא כך את פסקי הדין המרכזיים לפני ניסוח התשובה, ולא להסתפק בתקצירים.',
+    description: 'קריאת הנוסח המלא של פסק דין מתוך דף פסק הדין בגילוי נאות, לפי שדה id שהוחזר מ-search_verdicts. הנוסח מוחזר בקטעים של 18,000 תווים: התוצאה כוללת total_chars ו־next_offset. אם next_offset אינו null, הנוסח לא נגמר, ויש לקרוא את ההמשך בקריאה נוספת עם offset=next_offset, שוב ושוב עד סוף הנוסח או עד השלמת הדיון הדרוש. חובה לקרוא כך את פסקי הדין המרכזיים לפני ניסוח התשובה, ולא להסתפק בתקצירים.',
     input_schema: {
       type: 'object',
-      properties: { id: { type: 'string', description: 'מזהה פסק הדין (id) מתוצאות search_verdicts' } },
+      properties: {
+        id: { type: 'string', description: 'מזהה פסק הדין (id) מתוצאות search_verdicts' },
+        offset: { type: 'number', description: 'היסט תווים להמשך קריאה, כפי שהוחזר בשדה next_offset בקריאה הקודמת. ברירת מחדל 0.' },
+      },
       required: ['id'],
     },
   },
@@ -195,10 +211,10 @@ async function runTool(name, input, sources) {
     return { title: input.title, text };
   }
   if (name === 'get_verdict_text') {
-    const text = await verdictText(input.id);
+    const r = await verdictText(input.id, input.offset || 0);
     const url = GN + '/verdict/' + input.id;
     sources.push({ title: 'פסק הדין המלא בגילוי נאות', url });
-    return { url, text };
+    return { url, ...r };
   }
   throw new Error('unknown tool ' + name);
 }
@@ -207,6 +223,7 @@ const SYSTEM = [
   'אתה עוזר מחקר משפטי לסטודנט למשפטים בישראל. ענה בעברית בלבד.',
   'לכל שאלה עובדתית על פסיקה או חקיקה חובה להשתמש בכלים: search_verdicts לפסיקה, search_laws לחקיקה, get_law_text לקריאת נוסח חוק.',
   'תוצאות search_verdicts הן תקצירים בלבד. לפני ניסוח התשובה קרא באמצעות get_verdict_text את נוסחם המלא של פסק הדין הרלוונטי ביותר, או של שני פסקי הדין הרלוונטיים ביותר, ובסס את התשובה על הנוסח המלא.',
+  'הנוסח מוחזר בקטעים: כל עוד next_offset אינו null, המשך לקרוא את אותו פסק דין עם offset=next_offset עד שהגעת לסוף הנוסח, או לפחות עד שהשלמת את חלק הדיון וההכרעה. אל תכתוב שהנוסח נקטע או שאין בידך הנוסח המלא בלי שניסית להמשיך לקרוא בקטעים.',
   'אסור להמציא פסקי דין, מספרי תיקים, שמות שופטים או סעיפי חוק. מה שלא נמצא בכלים, אמור במפורש שלא נמצא.',
   'בכל טענה משפטית ציין אסמכתה: שם פסק הדין ומספר התיק, או שם החוק ומספר הסעיף.',
   'מבנה התשובה: פתיחה קצרה עם התשובה, אחריה פירוט קצר, ולבסוף שורת "לתשומת לב" אם יש מגבלה (למשל שהתקציר אינו תחליף לקובץ המקור).',
@@ -225,7 +242,7 @@ async function handleAsk(request, env) {
   const effortRaw = String(env.EFFORT || 'high').toLowerCase();
   const effort = EFFORTS.includes(effortRaw) ? effortRaw : null;
   const messages = [{ role: 'user', content: question }];
-  for (let round = 0; round < 6; round++) {
+  for (let round = 0; round < 12; round++) {
     const payload = {
       model, max_tokens: 8000, system: SYSTEM,
       tools: TOOLS, messages,

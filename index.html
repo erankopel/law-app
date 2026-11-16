@@ -208,12 +208,8 @@
         שאל שאלה משפטית בשפה חופשית. קלוד יחפש עבורך בגילוי נאות ובספר החוקים הפתוח,
         ויענה עם אסמכתאות. <b>כל תשובה יש לאמת מול קובץ המקור.</b>
       </div>
-      <div class="actions" style="margin-top:10px">
-        <button type="button" class="btn secondary small" id="a-clear-hist">🗑 נקה היסטוריה</button>
-        <span class="meta" style="align-self:center">השיחה נשמרת במכשיר הזה בלבד, ונשארת גם אחרי רענון. כל תשובה ניתנת להורדה כמסמך Word.</span>
-      </div>
+      <div class="meta" style="margin-top:8px">השיחה נשמרת במכשיר הזה בלבד, ונשארת גם אחרי רענון. כל תשובה ניתנת להורדה כמסמך Word. ההיסטוריה מקופלת למטה.</div>
     </div>
-    <div id="chat" class="chatlog"></div>
     <form id="aform" class="card">
       <label>השאלה שלך</label>
       <textarea id="a-q" placeholder="למשל: מה קבע בית המשפט העליון לגבי פיצויים על אובדן השתכרות לעצמאי?"></textarea>
@@ -222,6 +218,15 @@
       </div>
     </form>
     <div id="a-status" class="status"></div>
+    <div class="card" style="display:flex; align-items:center; gap:10px; padding:10px 14px">
+      <button type="button" class="btn secondary small" id="a-toggle-hist">🕘 היסטוריה <span id="hist-chev">▾</span></button>
+      <span class="meta" id="hist-count"></span>
+      <span style="flex:1"></span>
+      <button type="button" class="btn secondary small" id="a-clear-hist">🗑 נקה</button>
+    </div>
+    <div id="hist-wrap" class="hidden">
+      <div id="chat" class="chatlog"></div>
+    </div>
   </section>
 
   <!-- ===== סקילים ===== -->
@@ -505,6 +510,7 @@ $('#aform').addEventListener('submit', async e => {
   if(!q) return;
   const chat = $('#chat'), status = $('#a-status');
   chat.insertAdjacentHTML('beforeend', `<div class="msg user" id="a-temp">${esc(q)}</div>`);
+  setHistOpen(true);
   $('#a-q').value = '';
   status.className = 'status'; status.textContent = 'קלוד מחפש ומנסח תשובה... זה עשוי לקחת כחצי דקה.';
   $('#a-submit').disabled = true;
@@ -554,8 +560,15 @@ function exchangeHtml(en){
 }
 function renderHistory(){
   const h = getHistory().slice().reverse();
-  $('#chat').innerHTML = h.map(exchangeHtml).join('');
+  $('#chat').innerHTML = h.length ? h.map(exchangeHtml).join('') : '<div class="status">אין עדיין שיחות שמורות.</div>';
+  const c = $('#hist-count');
+  if(c) c.textContent = h.length ? h.length + ' שיחות שמורות במכשיר' : '';
 }
+function setHistOpen(open){
+  $('#hist-wrap').classList.toggle('hidden', !open);
+  $('#hist-chev').textContent = open ? '▴' : '▾';
+}
+$('#a-toggle-hist').addEventListener('click', () => setHistOpen($('#hist-wrap').classList.contains('hidden')));
 document.addEventListener('click', e => {
   const dl = e.target.closest('[data-dl]');
   if(dl){ const en = getHistory().find(x => x.id === dl.dataset.dl); if(en) downloadAnswerDocx(en); return; }
@@ -564,11 +577,13 @@ document.addEventListener('click', e => {
     const id = del.dataset.delHist;
     setHistory(getHistory().filter(x => x.id !== id));
     document.querySelector('.exchange[data-hist="' + CSS.escape(id) + '"]')?.remove();
+    const hc = $('#hist-count');
+    if(hc) hc.textContent = getHistory().length ? getHistory().length + ' שיחות שמורות במכשיר' : '';
   }
 });
 $('#a-clear-hist').addEventListener('click', () => {
   if(!getHistory().length) return;
-  if(confirm('למחוק את כל היסטוריית השאלות מהמכשיר?')){ setHistory([]); $('#chat').innerHTML = ''; }
+  if(confirm('למחוק את כל היסטוריית השאלות מהמכשיר?')){ setHistory([]); renderHistory(); }
 });
 renderHistory();
 
