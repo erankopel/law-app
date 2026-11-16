@@ -1,0 +1,529 @@
+<!doctype html>
+<html dir="rtl" lang="he">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+<meta name="theme-color" content="#12151c" />
+<meta name="robots" content="noindex, nofollow" />
+<title>משפטי — חיפוש פסיקה וחקיקה</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link href="https://fonts.googleapis.com/css2?family=Heebo:wght@400;500;700;800&display=swap" rel="stylesheet" />
+<style>
+  :root{
+    --bg:#12151c; --panel:#1a1f2a; --panel2:#212837; --line:#2e3648;
+    --txt:#eef1f6; --muted:#9aa7bd; --accent:#e8b34b; --accent2:#5b8def;
+    --good:#3fb97c; --bad:#e05d5d; --radius:14px;
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent}
+  html,body{margin:0;padding:0}
+  body{background:var(--bg); color:var(--txt); font-family:'Heebo',system-ui,sans-serif; min-height:100vh}
+  a{color:var(--accent2)}
+  header{padding:20px 16px 8px; text-align:center}
+  header h1{margin:0; font-size:26px; font-weight:800}
+  header h1 .scale{color:var(--accent)}
+  header p{margin:4px 0 0; color:var(--muted); font-size:13px}
+  nav.tabs{display:flex; gap:8px; padding:12px 12px 4px; position:sticky; top:0; background:var(--bg); z-index:20}
+  nav.tabs button{flex:1; padding:11px 4px; border:1px solid var(--line); background:var(--panel); color:var(--muted);
+    border-radius:12px; font-family:inherit; font-size:15px; font-weight:700; cursor:pointer}
+  nav.tabs button.active{background:var(--accent); color:#191204; border-color:var(--accent)}
+  main{padding:12px; max-width:860px; margin:0 auto}
+  section.view{display:none}
+  section.view.active{display:block}
+  .card{background:var(--panel); border:1px solid var(--line); border-radius:var(--radius); padding:14px; margin-bottom:12px}
+  label{display:block; font-size:13px; color:var(--muted); margin:10px 0 4px}
+  label:first-child{margin-top:0}
+  input[type=text],input[type=date],input[type=password],select,textarea{
+    width:100%; padding:11px 12px; border-radius:10px; border:1px solid var(--line);
+    background:var(--panel2); color:var(--txt); font-family:inherit; font-size:16px}
+  textarea{resize:vertical; min-height:74px}
+  .row{display:flex; gap:10px}
+  .row>div{flex:1}
+  .btn{display:inline-block; padding:11px 18px; border-radius:11px; border:0; cursor:pointer;
+    font-family:inherit; font-size:15px; font-weight:700; background:var(--accent); color:#191204}
+  .btn.secondary{background:var(--panel2); color:var(--txt); border:1px solid var(--line)}
+  .btn.small{padding:7px 12px; font-size:13px}
+  .btn:disabled{opacity:.55}
+  .actions{margin-top:14px; display:flex; gap:10px; flex-wrap:wrap}
+  .result{border:1px solid var(--line); background:var(--panel); border-radius:var(--radius); padding:13px 14px; margin-bottom:10px}
+  .result h3{margin:0 0 2px; font-size:16px; line-height:1.35}
+  .meta{color:var(--muted); font-size:12.5px; margin:2px 0}
+  .snippet{font-size:13.5px; color:#cdd6e4; margin-top:7px; line-height:1.55;
+    display:-webkit-box; -webkit-line-clamp:4; -webkit-box-orient:vertical; overflow:hidden}
+  .links{margin-top:9px; display:flex; gap:8px; flex-wrap:wrap}
+  .links a,.links button.chip{text-decoration:none; font-size:12.5px; font-weight:700; padding:6px 11px; border-radius:999px;
+    border:1px solid var(--line); background:var(--panel2); color:var(--txt); cursor:pointer; font-family:inherit}
+  .links a.src{border-color:var(--accent); color:var(--accent)}
+  .star{float:left; background:none; border:0; font-size:21px; cursor:pointer; color:var(--muted); padding:0 2px}
+  .star.on{color:var(--accent)}
+  .status{color:var(--muted); font-size:14px; padding:10px 2px}
+  .status.err{color:var(--bad)}
+  .lawtext{background:var(--panel); border:1px solid var(--line); border-radius:var(--radius); padding:16px; line-height:1.75; font-size:15.5px}
+  .lawtext h1,.lawtext h2,.lawtext h3{line-height:1.4}
+  .lawtext table{border-collapse:collapse; max-width:100%}
+  .lawtext td,.lawtext th{border:1px solid var(--line); padding:4px 8px}
+  .chatlog{display:flex; flex-direction:column; gap:10px; margin-bottom:12px}
+  .msg{border-radius:14px; padding:11px 13px; font-size:15px; line-height:1.6; white-space:pre-wrap; word-break:break-word}
+  .msg.user{background:var(--panel2); border:1px solid var(--line)}
+  .msg.ai{background:#1d2635; border:1px solid #31435f}
+  .msg .srclinks{margin-top:8px; display:flex; flex-direction:column; gap:4px}
+  .msg .srclinks a{font-size:13px}
+  #gate{position:fixed; inset:0; background:rgba(10,12,17,.93); z-index:50; display:none; align-items:center; justify-content:center; padding:18px}
+  #gate .box{background:var(--panel); border:1px solid var(--line); border-radius:18px; padding:22px; max-width:360px; width:100%; text-align:center}
+  #gate h2{margin:0 0 6px}
+  #gate p{color:var(--muted); font-size:13.5px; margin:0 0 14px}
+  footer{padding:14px 16px 30px; text-align:center; color:var(--muted); font-size:12px; line-height:1.7}
+  .note-area{width:100%; margin-top:8px; min-height:44px; font-size:14px}
+  .hidden{display:none !important}
+</style>
+</head>
+<body>
+<header>
+  <h1><span class="scale">⚖️</span> משפטי</h1>
+  <p>חיפוש פסיקה וחקיקה · גילוי נאות וספר החוקים הפתוח · פרטי, לשימושך בלבד</p>
+</header>
+
+<nav class="tabs">
+  <button data-view="verdicts" class="active">🔍 פסיקה</button>
+  <button data-view="laws">📜 חקיקה</button>
+  <button data-view="ask">🤖 שאל AI</button>
+  <button data-view="saved">⭐ שמורים</button>
+</nav>
+
+<main>
+  <!-- ===== פסיקה ===== -->
+  <section id="view-verdicts" class="view active">
+    <form id="vform" class="card">
+      <label>טקסט חופשי בפסק הדין</label>
+      <input type="text" id="v-text" placeholder="למשל: רשלנות רפואית, תום לב, פיצויים" />
+      <div class="row">
+        <div>
+          <label>אופן חיפוש</label>
+          <select id="v-match">
+            <option value="exact">ביטוי מדויק</option>
+            <option value="any">כל אחת מהמילים</option>
+          </select>
+        </div>
+        <div>
+          <label>מיון</label>
+          <select id="v-sort">
+            <option value="relevance">רלוונטיות</option>
+            <option value="newest">החדש קודם</option>
+            <option value="oldest">הישן קודם</option>
+          </select>
+        </div>
+      </div>
+      <div class="row">
+        <div>
+          <label>שם צד</label>
+          <input type="text" id="v-name" placeholder="שם תובע / נתבע" />
+        </div>
+        <div>
+          <label>שופט</label>
+          <input type="text" id="v-judge" placeholder="שם השופט" />
+        </div>
+      </div>
+      <div class="row">
+        <div>
+          <label>מספר תיק</label>
+          <input type="text" id="v-casenum" placeholder="למשל 398/99" />
+        </div>
+        <div>
+          <label>סוג הליך</label>
+          <input type="text" id="v-casetype" list="casetypes" placeholder="ע&quot;א, בג&quot;ץ, ת&quot;א..." />
+          <datalist id="casetypes">
+            <option value="ע&quot;א"></option><option value="רע&quot;א"></option>
+            <option value="בג&quot;ץ"></option><option value="עע&quot;ם"></option>
+            <option value="ת&quot;א"></option><option value="תאד&quot;מ"></option>
+            <option value="עב&quot;ל"></option><option value="דנ&quot;א"></option>
+          </datalist>
+        </div>
+      </div>
+      <div class="row">
+        <div>
+          <label>ערכאה</label>
+          <select id="v-court">
+            <option value="">הכול</option>
+            <option value="עליון">בית המשפט העליון</option>
+            <option value="מחוזי">מחוזי</option>
+            <option value="שלום">שלום</option>
+            <option value="עבודה">בתי דין לעבודה</option>
+            <option value="משפחה">משפחה</option>
+            <option value="תעבורה">תעבורה</option>
+            <option value="רבני">רבני</option>
+          </select>
+        </div>
+        <div>
+          <label>מתאריך</label>
+          <input type="date" id="v-from" />
+        </div>
+        <div>
+          <label>עד תאריך</label>
+          <input type="date" id="v-to" />
+        </div>
+      </div>
+      <div class="actions">
+        <button type="submit" class="btn" id="v-submit">חפש פסיקה</button>
+        <button type="button" class="btn secondary" id="v-clear">נקה</button>
+      </div>
+    </form>
+    <div id="v-status" class="status"></div>
+    <div id="v-results"></div>
+    <div class="actions"><button type="button" class="btn secondary hidden" id="v-more">טען עוד תוצאות</button></div>
+  </section>
+
+  <!-- ===== חקיקה ===== -->
+  <section id="view-laws" class="view">
+    <form id="lform" class="card">
+      <label>שם החוק או מילות חיפוש</label>
+      <input type="text" id="l-q" placeholder="למשל: חוק החוזים, פקודת הנזיקין, חוק הירושה" />
+      <div class="actions">
+        <button type="submit" class="btn" id="l-submit">חפש חוק</button>
+      </div>
+    </form>
+    <div id="l-status" class="status"></div>
+    <div id="l-results"></div>
+    <div id="law-reader" class="hidden">
+      <div class="actions" style="margin:0 0 10px">
+        <button type="button" class="btn secondary small" id="law-back">→ חזרה לתוצאות</button>
+        <span id="law-title" style="font-weight:700"></span>
+      </div>
+      <div id="law-body" class="lawtext"></div>
+    </div>
+  </section>
+
+  <!-- ===== שאל AI ===== -->
+  <section id="view-ask" class="view">
+    <div class="card">
+      <div style="font-size:14.5px; line-height:1.6">
+        שאל שאלה משפטית בשפה חופשית. קלוד יחפש עבורך בגילוי נאות ובספר החוקים הפתוח,
+        ויענה עם אסמכתאות. <b>כל תשובה יש לאמת מול קובץ המקור.</b>
+      </div>
+    </div>
+    <div id="chat" class="chatlog"></div>
+    <form id="aform" class="card">
+      <label>השאלה שלך</label>
+      <textarea id="a-q" placeholder="למשל: מה קבע בית המשפט העליון לגבי פיצויים על אובדן השתכרות לעצמאי?"></textarea>
+      <div class="actions">
+        <button type="submit" class="btn" id="a-submit">שאל</button>
+      </div>
+    </form>
+    <div id="a-status" class="status"></div>
+  </section>
+
+  <!-- ===== שמורים ===== -->
+  <section id="view-saved" class="view">
+    <div id="s-status" class="status">הפריטים השמורים וההערות נשמרים במכשיר הזה בלבד.</div>
+    <div id="s-results"></div>
+  </section>
+</main>
+
+<footer>
+  מקורות: מאגר הפסיקה של גילוי נאות (המקור הראשוני הוא קובץ הרשות השופטת) · טקסטי החקיקה מספר החוקים הפתוח (ויקיטקסט)<br/>
+  האפליקציה פרטית ואינה מפורסמת. התשובות והתקצירים אינם תחליף לקריאת המקור.
+</footer>
+
+<div id="gate">
+  <div class="box">
+    <h2>🔒 כניסה פרטית</h2>
+    <p>האפליקציה מוגנת בקוד גישה. הקוד נשמר במכשיר הזה בלבד.</p>
+    <input type="password" id="gate-pin" placeholder="קוד גישה" autocomplete="off" />
+    <div class="actions" style="justify-content:center">
+      <button type="button" class="btn" id="gate-go">כניסה</button>
+    </div>
+    <div id="gate-err" class="status err"></div>
+  </div>
+</div>
+
+<script>
+'use strict';
+const API = '/api';
+const LS_PIN = 'lawapp_pin';
+const LS_BM = 'lawapp_bookmarks_v1';
+const $ = s => document.querySelector(s);
+
+/* ---------- utilities ---------- */
+function esc(s){ return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function decodeEntities(s){
+  const t = document.createElement('textarea');
+  t.innerHTML = String(s ?? '').replace(/<[^>]*>/g, ' ');
+  return t.value.replace(/\s+/g, ' ').trim();
+}
+function fmtDate(iso){
+  if(!iso) return '';
+  const d = new Date(iso);
+  return isNaN(d) ? iso : d.toLocaleDateString('he-IL');
+}
+function getPin(){ return localStorage.getItem(LS_PIN) || ''; }
+function getBookmarks(){ try{ return JSON.parse(localStorage.getItem(LS_BM) || '[]'); }catch(e){ return []; } }
+function setBookmarks(b){ localStorage.setItem(LS_BM, JSON.stringify(b)); }
+function bmKey(kind, id){ return kind + ':' + id; }
+function isBookmarked(kind, id){ return getBookmarks().some(b => b.key === bmKey(kind, id)); }
+function toggleBookmark(item){
+  const b = getBookmarks();
+  const i = b.findIndex(x => x.key === item.key);
+  if(i >= 0) b.splice(i, 1); else b.unshift({...item, note:'', ts: Date.now()});
+  setBookmarks(b);
+  document.querySelectorAll('[data-bm="' + CSS.escape(item.key) + '"]').forEach(el => {
+    el.classList.toggle('on', i < 0);
+    el.textContent = i < 0 ? '★' : '☆';
+  });
+  renderSaved();
+}
+
+async function apiFetch(path, opts = {}){
+  const headers = {...(opts.headers || {}), 'X-App-Pin': getPin()};
+  const res = await fetch(API + path, {...opts, headers});
+  if(res.status === 401){
+    localStorage.removeItem(LS_PIN);
+    showGate('הקוד שגוי או פג. הזן שוב את קוד הגישה.');
+    throw new Error('unauthorized');
+  }
+  return res;
+}
+
+/* ---------- PIN gate ---------- */
+function showGate(msg){
+  $('#gate').style.display = 'flex';
+  $('#gate-err').textContent = msg || '';
+  setTimeout(() => $('#gate-pin').focus(), 50);
+}
+async function tryPin(){
+  const pin = $('#gate-pin').value.trim();
+  if(!pin) return;
+  $('#gate-err').textContent = 'בודק...';
+  try{
+    const res = await fetch(API + '/ping', {headers: {'X-App-Pin': pin}});
+    if(res.ok){
+      localStorage.setItem(LS_PIN, pin);
+      $('#gate').style.display = 'none';
+    } else {
+      $('#gate-err').textContent = 'הקוד שגוי. נסה שוב.';
+    }
+  }catch(e){
+    $('#gate-err').textContent = 'אין חיבור לשרת. ייתכן שהאפליקציה עדיין לא חוברה.';
+  }
+}
+$('#gate-go').addEventListener('click', tryPin);
+$('#gate-pin').addEventListener('keydown', e => { if(e.key === 'Enter') tryPin(); });
+if(!getPin()) showGate();
+
+/* ---------- tabs ---------- */
+document.querySelectorAll('nav.tabs button').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('nav.tabs button').forEach(b => b.classList.toggle('active', b === btn));
+    document.querySelectorAll('section.view').forEach(v => v.classList.toggle('active', v.id === 'view-' + btn.dataset.view));
+    if(btn.dataset.view === 'saved') renderSaved();
+    window.scrollTo({top: 0});
+  });
+});
+
+/* ---------- verdicts ---------- */
+let vPage = 1, vHasMore = false;
+function verdictParams(page){
+  const p = new URLSearchParams();
+  const text = $('#v-text').value.trim();
+  if(text){ p.set('free_text', text); p.set('match_mode', $('#v-match').value); p.set('free_text_op', 'and'); }
+  const name = $('#v-name').value.trim(); if(name) p.set('name', name);
+  const judge = $('#v-judge').value.trim(); if(judge) p.set('judge', judge);
+  const cn = $('#v-casenum').value.trim(); if(cn) p.set('case_number', cn);
+  const ct = $('#v-casetype').value.trim(); if(ct) p.set('case_type', ct);
+  const court = $('#v-court').value; if(court) p.set('court_type', court);
+  const from = $('#v-from').value; if(from) p.set('date_from', from);
+  const to = $('#v-to').value; if(to) p.set('date_to', to);
+  p.set('sort', $('#v-sort').value);
+  p.set('page', String(page));
+  return p;
+}
+function verdictCard(r){
+  const title = [r.case_type, r.case_number].filter(Boolean).join(' ');
+  const parties = decodeEntities(r.parties || '');
+  const gnUrl = 'https://www.giluy-naot.org.il/search?' + new URLSearchParams({case_number: r.case_number || '', ...(r.case_type ? {case_type: r.case_type} : {})});
+  const key = bmKey('v', r.id);
+  const on = isBookmarked('v', r.id);
+  return `<div class="result">
+    <button class="star ${on ? 'on' : ''}" data-bm="${esc(key)}" data-kind="v" data-id="${esc(r.id)}" title="שמור">${on ? '★' : '☆'}</button>
+    <h3>${esc(title)}${parties ? ' · ' + esc(parties) : ''}</h3>
+    <div class="meta">${esc(r.court || '')}${r.judge ? ' · השופט/ת ' + esc(r.judge) : ''}</div>
+    <div class="meta">${esc(r.decision_type || '')}${r.decision_date ? ' · ' + fmtDate(r.decision_date) : ''}</div>
+    ${r.snippet ? `<div class="snippet">${esc(decodeEntities(r.snippet))}</div>` : ''}
+    <div class="links">
+      ${r.pdf_url ? `<a class="src" href="${esc(r.pdf_url)}" target="_blank" rel="noopener">📄 קובץ המקור (PDF)</a>` : ''}
+      ${r.docx_url ? `<a href="${esc(r.docx_url)}" target="_blank" rel="noopener">DOCX</a>` : ''}
+      <a href="${esc(gnUrl)}" target="_blank" rel="noopener">בגילוי נאות</a>
+    </div>
+  </div>`;
+}
+async function runVerdictSearch(append){
+  const status = $('#v-status'), box = $('#v-results'), more = $('#v-more');
+  if(!append){ vPage = 1; box.innerHTML = ''; }
+  status.className = 'status'; status.textContent = 'מחפש...';
+  $('#v-submit').disabled = true;
+  try{
+    const res = await apiFetch('/search?' + verdictParams(vPage).toString());
+    if(!res.ok) throw new Error('http ' + res.status);
+    const data = await res.json();
+    const results = data.results || [];
+    if(!append && results.length === 0){ status.textContent = 'לא נמצאו תוצאות. נסה לשנות את תנאי החיפוש.'; }
+    else status.textContent = append ? status.textContent : '';
+    box.insertAdjacentHTML('beforeend', results.map(verdictCard).join(''));
+    vHasMore = results.length >= (data.per_page || 10);
+    more.classList.toggle('hidden', !vHasMore);
+    if(!append && results.length) status.textContent = 'נמצאו ' + results.length + ' תוצאות' + (data.capped ? ' (מוצגות המובילות; צמצם את החיפוש לדיוק)' : '');
+  }catch(e){
+    if(e.message !== 'unauthorized'){ status.className = 'status err'; status.textContent = 'החיפוש נכשל. בדוק חיבור ונסה שוב.'; }
+  }finally{ $('#v-submit').disabled = false; }
+}
+$('#vform').addEventListener('submit', e => { e.preventDefault(); runVerdictSearch(false); });
+$('#v-more').addEventListener('click', () => { vPage++; runVerdictSearch(true); });
+$('#v-clear').addEventListener('click', () => { $('#vform').reset(); $('#v-results').innerHTML = ''; $('#v-status').textContent = ''; $('#v-more').classList.add('hidden'); });
+
+/* ---------- laws ---------- */
+function lawCard(l){
+  const key = bmKey('l', l.id);
+  const on = isBookmarked('l', l.id);
+  return `<div class="result">
+    <button class="star ${on ? 'on' : ''}" data-bm="${esc(key)}" data-kind="l" data-id="${esc(l.id)}" title="שמור">${on ? '★' : '☆'}</button>
+    <h3>${esc(l.name || '')}</h3>
+    <div class="meta">${esc(l.law_type || '')}${l.section_count ? ' · ' + esc(l.section_count) + ' סעיפים' : ''}${l.updated_at ? ' · עודכן ' + fmtDate(l.updated_at) : ''}</div>
+    <div class="links">
+      ${l.wikisource_url ? `<button class="chip" data-read-law="${esc(l.id)}">📖 קרא את החוק</button>` : ''}
+      ${l.wikisource_url ? `<a href="${esc(l.wikisource_url)}" target="_blank" rel="noopener">ויקיטקסט</a>` : ''}
+      ${l.knesset_url ? `<a href="${esc(l.knesset_url)}" target="_blank" rel="noopener">באתר הכנסת</a>` : ''}
+    </div>
+  </div>`;
+}
+let lawCache = {};
+async function runLawSearch(){
+  const q = $('#l-q').value.trim();
+  const status = $('#l-status'), box = $('#l-results');
+  if(!q){ status.textContent = 'הזן שם חוק או מילות חיפוש.'; return; }
+  $('#law-reader').classList.add('hidden');
+  box.classList.remove('hidden');
+  status.className = 'status'; status.textContent = 'מחפש...';
+  $('#l-submit').disabled = true;
+  try{
+    const res = await apiFetch('/laws?search=' + encodeURIComponent(q) + '&page=1');
+    if(!res.ok) throw new Error('http ' + res.status);
+    const data = await res.json();
+    const items = data.items || [];
+    lawCache = {}; items.forEach(l => lawCache[l.id] = l);
+    box.innerHTML = items.map(lawCard).join('');
+    status.textContent = items.length ? 'נמצאו ' + items.length + ' חוקים' + (data.total && data.total > items.length ? ' מתוך ' + data.total + ' — צמצם את החיפוש' : '') : 'לא נמצאו חוקים בשם זה.';
+  }catch(e){
+    if(e.message !== 'unauthorized'){ status.className = 'status err'; status.textContent = 'החיפוש נכשל. בדוק חיבור ונסה שוב.'; }
+  }finally{ $('#l-submit').disabled = false; }
+}
+$('#lform').addEventListener('submit', e => { e.preventDefault(); runLawSearch(); });
+
+async function readLaw(id){
+  const law = lawCache[id];
+  if(!law || !law.wikisource_url) return;
+  const title = decodeURIComponent(law.wikisource_url.split('/wiki/')[1] || '');
+  $('#l-results').classList.add('hidden');
+  $('#law-reader').classList.remove('hidden');
+  $('#law-title').textContent = law.name || '';
+  const body = $('#law-body');
+  body.innerHTML = 'טוען את טקסט החוק...';
+  window.scrollTo({top: 0});
+  try{
+    const res = await apiFetch('/law-text?title=' + encodeURIComponent(title));
+    if(!res.ok) throw new Error('http ' + res.status);
+    const data = await res.json();
+    const doc = new DOMParser().parseFromString(data.html || '', 'text/html');
+    doc.querySelectorAll('script,style,iframe,form,button,.mw-editsection').forEach(el => el.remove());
+    doc.querySelectorAll('a').forEach(a => {
+      const href = a.getAttribute('href') || '';
+      if(href.startsWith('/')) a.setAttribute('href', 'https://he.wikisource.org' + href);
+      a.setAttribute('target', '_blank'); a.setAttribute('rel', 'noopener');
+    });
+    doc.querySelectorAll('img').forEach(img => {
+      const src = img.getAttribute('src') || '';
+      if(src.startsWith('//')) img.setAttribute('src', 'https:' + src);
+    });
+    body.innerHTML = doc.body.innerHTML || 'לא נמצא טקסט.';
+  }catch(e){
+    body.innerHTML = 'טעינת הטקסט נכשלה. אפשר לקרוא בוויקיטקסט: <a href="' + esc(law.wikisource_url) + '" target="_blank" rel="noopener">פתח את החוק</a>';
+  }
+}
+$('#law-back').addEventListener('click', () => { $('#law-reader').classList.add('hidden'); $('#l-results').classList.remove('hidden'); });
+
+/* ---------- ask AI ---------- */
+$('#aform').addEventListener('submit', async e => {
+  e.preventDefault();
+  const q = $('#a-q').value.trim();
+  if(!q) return;
+  const chat = $('#chat'), status = $('#a-status');
+  chat.insertAdjacentHTML('beforeend', `<div class="msg user">${esc(q)}</div>`);
+  $('#a-q').value = '';
+  status.className = 'status'; status.textContent = 'קלוד מחפש ומנסח תשובה... זה עשוי לקחת כחצי דקה.';
+  $('#a-submit').disabled = true;
+  window.scrollTo({top: document.body.scrollHeight});
+  try{
+    const res = await apiFetch('/ask', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({question: q})});
+    const data = await res.json().catch(() => ({}));
+    if(res.status === 501){
+      status.className = 'status err';
+      status.textContent = 'מפתח ה־API של קלוד עדיין לא הוגדר בשרת, ולכן החיפוש החכם לא פעיל. חיפוש הפסיקה והחקיקה עובדים כרגיל.';
+      return;
+    }
+    if(!res.ok || !data.answer) throw new Error('bad response');
+    const srcs = (data.sources || []).map(s => `<a href="${esc(s.url)}" target="_blank" rel="noopener">🔗 ${esc(s.title)}</a>`).join('');
+    chat.insertAdjacentHTML('beforeend', `<div class="msg ai">${esc(data.answer)}${srcs ? `<div class="srclinks">${srcs}</div>` : ''}</div>`);
+    status.textContent = '';
+  }catch(err){
+    if(err.message !== 'unauthorized'){ status.className = 'status err'; status.textContent = 'השאלה נכשלה. נסה שוב בעוד רגע.'; }
+  }finally{
+    $('#a-submit').disabled = false;
+    window.scrollTo({top: document.body.scrollHeight});
+  }
+});
+
+/* ---------- saved ---------- */
+function renderSaved(){
+  const box = $('#s-results');
+  const items = getBookmarks();
+  if(!items.length){ box.innerHTML = '<div class="status">אין עדיין פריטים שמורים. לחץ על ☆ ליד פסק דין או חוק כדי לשמור אותו כאן.</div>'; return; }
+  box.innerHTML = items.map(b => `<div class="result">
+    <button class="star on" data-bm="${esc(b.key)}" title="הסר">★</button>
+    <h3>${b.kind === 'v' ? '⚖️' : '📜'} ${esc(b.title || '')}</h3>
+    ${b.sub ? `<div class="meta">${esc(b.sub)}</div>` : ''}
+    <div class="links">${b.url ? `<a class="src" href="${esc(b.url)}" target="_blank" rel="noopener">פתח מקור</a>` : ''}${b.altUrl ? `<a href="${esc(b.altUrl)}" target="_blank" rel="noopener">בגילוי נאות / ויקיטקסט</a>` : ''}</div>
+    <textarea class="note-area" data-note="${esc(b.key)}" placeholder="הערה אישית...">${esc(b.note || '')}</textarea>
+  </div>`).join('');
+  box.querySelectorAll('[data-note]').forEach(t => {
+    t.addEventListener('change', () => {
+      const all = getBookmarks();
+      const it = all.find(x => x.key === t.dataset.note);
+      if(it){ it.note = t.value; setBookmarks(all); }
+    });
+  });
+}
+
+/* ---------- bookmark clicks (event delegation) ---------- */
+document.addEventListener('click', e => {
+  const star = e.target.closest('[data-bm]');
+  if(star){
+    const key = star.dataset.bm;
+    const existing = getBookmarks().find(x => x.key === key);
+    if(existing){ toggleBookmark(existing); return; }
+    const kind = star.dataset.kind, id = star.dataset.id;
+    const card = star.closest('.result');
+    const title = card ? (card.querySelector('h3')?.textContent || '') : '';
+    const sub = card ? (card.querySelector('.meta')?.textContent || '') : '';
+    let url = '', altUrl = '';
+    if(card){
+      const src = card.querySelector('.links a.src');
+      const links = card.querySelectorAll('.links a');
+      if(src) url = src.href;
+      if(kind === 'v' && links.length) altUrl = links[links.length - 1].href;
+      if(kind === 'l'){ const wl = [...links].find(a => a.href.includes('wikisource')); if(wl) altUrl = wl.href; if(!url && wl) url = wl.href; }
+    }
+    toggleBookmark({key, kind, id, title, sub, url, altUrl});
+    return;
+  }
+  const readBtn = e.target.closest('[data-read-law]');
+  if(readBtn) readLaw(readBtn.dataset.readLaw);
+});
+</script>
+</body>
+</html>
