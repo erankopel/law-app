@@ -67,6 +67,10 @@
   .msg.ai{background:#1d2635; border:1px solid #31435f}
   .msg .srclinks{margin-top:8px; display:flex; flex-direction:column; gap:4px}
   .msg .srclinks a{font-size:13px}
+  .exchange{display:contents}
+  .msg .msg-actions{margin-top:9px; display:flex; gap:8px; flex-wrap:wrap}
+  .msg .msg-actions button{font-size:12.5px; font-weight:700; padding:6px 11px; border-radius:999px;
+    border:1px solid var(--line); background:var(--panel2); color:var(--txt); cursor:pointer; font-family:inherit}
   #gate{position:fixed; inset:0; background:rgba(10,12,17,.93); z-index:50; display:none; align-items:center; justify-content:center; padding:18px}
   #gate .box{background:var(--panel); border:1px solid var(--line); border-radius:18px; padding:22px; max-width:360px; width:100%; text-align:center}
   #gate h2{margin:0 0 6px}
@@ -198,6 +202,10 @@
         שאל שאלה משפטית בשפה חופשית. קלוד יחפש עבורך בגילוי נאות ובספר החוקים הפתוח,
         ויענה עם אסמכתאות. <b>כל תשובה יש לאמת מול קובץ המקור.</b>
       </div>
+      <div class="actions" style="margin-top:10px">
+        <button type="button" class="btn secondary small" id="a-clear-hist">🗑 נקה היסטוריה</button>
+        <span class="meta" style="align-self:center">השיחה נשמרת במכשיר הזה בלבד, ונשארת גם אחרי רענון. כל תשובה ניתנת להורדה כמסמך Word.</span>
+      </div>
     </div>
     <div id="chat" class="chatlog"></div>
     <form id="aform" class="card">
@@ -239,6 +247,7 @@
 const API = '/api';
 const LS_PIN = 'lawapp_pin';
 const LS_BM = 'lawapp_bookmarks_v1';
+const LS_HIST = 'lawapp_history_v1';
 const $ = s => document.querySelector(s);
 
 /* ---------- utilities ---------- */
@@ -454,7 +463,7 @@ $('#aform').addEventListener('submit', async e => {
   const q = $('#a-q').value.trim();
   if(!q) return;
   const chat = $('#chat'), status = $('#a-status');
-  chat.insertAdjacentHTML('beforeend', `<div class="msg user">${esc(q)}</div>`);
+  chat.insertAdjacentHTML('beforeend', `<div class="msg user" id="a-temp">${esc(q)}</div>`);
   $('#a-q').value = '';
   status.className = 'status'; status.textContent = 'קלוד מחפש ומנסח תשובה... זה עשוי לקחת כחצי דקה.';
   $('#a-submit').disabled = true;
@@ -473,8 +482,10 @@ $('#aform').addEventListener('submit', async e => {
       return;
     }
     if(!data.answer) throw new Error('bad response');
-    const srcs = (data.sources || []).map(s => `<a href="${esc(s.url)}" target="_blank" rel="noopener">🔗 ${esc(s.title)}</a>`).join('');
-    chat.insertAdjacentHTML('beforeend', `<div class="msg ai">${esc(data.answer)}${srcs ? `<div class="srclinks">${srcs}</div>` : ''}</div>`);
+    const entry = {id: 'h' + Date.now(), ts: Date.now(), q, answer: data.answer, sources: data.sources || []};
+    addHistory(entry);
+    document.getElementById('a-temp')?.remove();
+    chat.insertAdjacentHTML('beforeend', exchangeHtml(entry));
     status.textContent = '';
   }catch(err){
     if(err.message !== 'unauthorized'){ status.className = 'status err'; status.textContent = 'השאלה נכשלה. נסה שוב בעוד רגע.'; }
@@ -483,6 +494,167 @@ $('#aform').addEventListener('submit', async e => {
     window.scrollTo({top: document.body.scrollHeight});
   }
 });
+
+/* ---------- ask history (localStorage) ---------- */
+function getHistory(){ try{ return JSON.parse(localStorage.getItem(LS_HIST) || '[]'); }catch(e){ return []; } }
+function setHistory(h){ try{ localStorage.setItem(LS_HIST, JSON.stringify(h.slice(0, 50))); }catch(e){} }
+function addHistory(en){ const h = getHistory(); h.unshift(en); setHistory(h); }
+function exchangeHtml(en){
+  const srcs = (en.sources || []).map(s => `<a href="${esc(s.url)}" target="_blank" rel="noopener">🔗 ${esc(s.title)}</a>`).join('');
+  return `<div class="exchange" data-hist="${esc(en.id)}">
+    <div class="msg user">${esc(en.q)}</div>
+    <div class="msg ai">${esc(en.answer)}${srcs ? `<div class="srclinks">${srcs}</div>` : ''}
+      <div class="msg-actions">
+        <button type="button" data-dl="${esc(en.id)}">📄 הורד כ־Word</button>
+        <button type="button" data-del-hist="${esc(en.id)}">🗑 מחק</button>
+      </div>
+    </div>
+  </div>`;
+}
+function renderHistory(){
+  const h = getHistory().slice().reverse();
+  $('#chat').innerHTML = h.map(exchangeHtml).join('');
+}
+document.addEventListener('click', e => {
+  const dl = e.target.closest('[data-dl]');
+  if(dl){ const en = getHistory().find(x => x.id === dl.dataset.dl); if(en) downloadAnswerDocx(en); return; }
+  const del = e.target.closest('[data-del-hist]');
+  if(del){
+    const id = del.dataset.delHist;
+    setHistory(getHistory().filter(x => x.id !== id));
+    document.querySelector('.exchange[data-hist="' + CSS.escape(id) + '"]')?.remove();
+  }
+});
+$('#a-clear-hist').addEventListener('click', () => {
+  if(!getHistory().length) return;
+  if(confirm('למחוק את כל היסטוריית השאלות מהמכשיר?')){ setHistory([]); $('#chat').innerHTML = ''; }
+});
+renderHistory();
+
+/* === docx export (pure) === */
+function dxEsc(s){ return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&apos;'}[c])); }
+const DX_CRC = (() => { const t = []; for(let n = 0; n < 256; n++){ let c = n; for(let k = 0; k < 8; k++) c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1); t[n] = c >>> 0; } return t; })();
+function dxCrc32(bytes){ let c = 0xFFFFFFFF; for(let i = 0; i < bytes.length; i++) c = DX_CRC[(c ^ bytes[i]) & 0xFF] ^ (c >>> 8); return (c ^ 0xFFFFFFFF) >>> 0; }
+function dxZip(files){
+  const enc = new TextEncoder();
+  const chunks = [], central = [];
+  let offset = 0;
+  for(const f of files){
+    const name = enc.encode(f.name), crc = dxCrc32(f.data);
+    const lh = new DataView(new ArrayBuffer(30));
+    lh.setUint32(0, 0x04034b50, true); lh.setUint16(4, 20, true); lh.setUint16(6, 0x0800, true);
+    lh.setUint32(14, crc, true); lh.setUint32(18, f.data.length, true); lh.setUint32(22, f.data.length, true);
+    lh.setUint16(26, name.length, true);
+    chunks.push(new Uint8Array(lh.buffer), name, f.data);
+    const ch = new DataView(new ArrayBuffer(46));
+    ch.setUint32(0, 0x02014b50, true); ch.setUint16(4, 20, true); ch.setUint16(6, 20, true); ch.setUint16(8, 0x0800, true);
+    ch.setUint32(16, crc, true); ch.setUint32(20, f.data.length, true); ch.setUint32(24, f.data.length, true);
+    ch.setUint16(28, name.length, true); ch.setUint32(42, offset, true);
+    central.push(new Uint8Array(ch.buffer), name);
+    offset += 30 + name.length + f.data.length;
+  }
+  const cenSize = central.reduce((a, c) => a + c.length, 0);
+  const end = new DataView(new ArrayBuffer(22));
+  end.setUint32(0, 0x06054b50, true); end.setUint16(8, files.length, true); end.setUint16(10, files.length, true);
+  end.setUint32(12, cenSize, true); end.setUint32(16, offset, true);
+  return new Blob([...chunks, ...central, new Uint8Array(end.buffer)], {type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'});
+}
+function dxRun(text, o = {}){
+  const size = o.size || 24;
+  let pr = '<w:rFonts w:ascii="David" w:hAnsi="David" w:cs="David"/>';
+  if(o.bold) pr += '<w:b/><w:bCs/>';
+  if(o.italic) pr += '<w:i/><w:iCs/>';
+  if(o.underline) pr += '<w:u w:val="single"/>';
+  if(o.color) pr += '<w:color w:val="' + o.color + '"/>';
+  pr += '<w:sz w:val="' + size + '"/><w:szCs w:val="' + size + '"/><w:rtl/>';
+  return '<w:r><w:rPr>' + pr + '</w:rPr><w:t xml:space="preserve">' + dxEsc(text) + '</w:t></w:r>';
+}
+function dxRuns(text, o = {}){
+  const parts = String(text).split(/\*\*(.+?)\*\*/g);
+  return parts.map((p, i) => p ? dxRun(p, {...o, bold: !!(o.bold || i % 2 === 1)}) : '').join('');
+}
+function dxPara(content, o = {}){
+  const jc = o.jc || 'both';
+  const after = o.after == null ? 120 : o.after;
+  return '<w:p><w:pPr><w:bidi/><w:jc w:val="' + jc + '"/><w:spacing w:line="360" w:lineRule="auto" w:after="' + after + '"/></w:pPr>' + content + '</w:p>';
+}
+function dxAnswerParas(md){
+  const out = [];
+  for(const raw of String(md || '').split(/\r?\n/)){
+    const line = raw.trim();
+    if(!line) continue;
+    if(/^---+$/.test(line)) continue;
+    if(line.includes('|') && /^[\s:|-]+$/.test(line)) continue;
+    const h = line.match(/^(#{1,4})\s+(.*)$/);
+    if(h){ out.push(dxPara(dxRuns(h[2].replace(/\*\*/g, ''), {bold: true, size: h[1].length <= 2 ? 28 : 26}), {jc: 'start', after: 160})); continue; }
+    const li = line.match(/^[-*•]\s+(.*)$/);
+    if(li){ out.push(dxPara(dxRun('• ') + dxRuns(li[1]))); continue; }
+    if(/^\|.*\|$/.test(line)){ out.push(dxPara(dxRuns(line.replace(/^\||\|$/g, '').split('|').map(c => c.trim()).join(' · ')))); continue; }
+    out.push(dxPara(dxRuns(line.replace(/^>\s*/, ''))));
+  }
+  return out;
+}
+function buildAnswerDocx(en){
+  const enc = new TextEncoder();
+  const dateStr = new Date(en.ts || Date.now()).toLocaleString('he-IL');
+  const title = 'תשובת מחקר משפטי';
+  const rels = [];
+  let body = '';
+  body += dxPara(dxRun(title, {bold: true, size: 32}), {jc: 'center', after: 80});
+  body += dxPara(dxRun('שאלה: ' + en.q, {bold: true, size: 26}), {jc: 'start', after: 80});
+  body += dxPara(dxRun(dateStr + ' · נוצר באפליקציית משפטי (law.medicom.vip)', {size: 20, color: '666666'}), {jc: 'center', after: 240});
+  body += dxAnswerParas(en.answer).join('');
+  const srcs = en.sources || [];
+  if(srcs.length){
+    body += dxPara(dxRun('אסמכתאות', {bold: true, size: 28}), {jc: 'start', after: 160});
+    srcs.forEach((s, i) => {
+      const rid = 'rId' + (i + 1);
+      rels.push('<Relationship Id="' + rid + '" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink" Target="' + dxEsc(s.url) + '" TargetMode="External"/>');
+      body += dxPara(dxRun((s.title || 'מקור') + ' — ') + '<w:hyperlink r:id="' + rid + '">' + dxRun(s.url, {color: '0563C1', underline: true}) + '</w:hyperlink>', {jc: 'start'});
+    });
+  }
+  body += dxPara(dxRun('לתשומת לב: התשובה נוצרה בכלי מחקר מבוסס AI ואינה תחליף לקריאת קובץ המקור.', {size: 20, color: '666666'}), {jc: 'start', after: 0});
+  const documentXml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n' +
+    '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">' +
+    '<w:body>' + body +
+    '<w:sectPr><w:pgSz w:w="11906" w:h="16838"/><w:pgMar w:top="1134" w:right="1134" w:bottom="1134" w:left="1134"/><w:bidi/></w:sectPr>' +
+    '</w:body></w:document>';
+  const contentTypes = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n' +
+    '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">' +
+    '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>' +
+    '<Default Extension="xml" ContentType="application/xml"/>' +
+    '<Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>' +
+    '<Override PartName="/docProps/core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/>' +
+    '</Types>';
+  const rootRels = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n' +
+    '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' +
+    '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/>' +
+    '<Relationship Id="rId2" Type="http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties" Target="docProps/core.xml"/>' +
+    '</Relationships>';
+  const docRels = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n' +
+    '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' + rels.join('') + '</Relationships>';
+  const core = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n' +
+    '<cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" xmlns:dc="http://purl.org/dc/elements/1.1/">' +
+    '<dc:title>' + dxEsc(title) + '</dc:title><dc:creator>law.medicom.vip</dc:creator></cp:coreProperties>';
+  return dxZip([
+    {name: '[Content_Types].xml', data: enc.encode(contentTypes)},
+    {name: '_rels/.rels', data: enc.encode(rootRels)},
+    {name: 'word/document.xml', data: enc.encode(documentXml)},
+    {name: 'word/_rels/document.xml.rels', data: enc.encode(docRels)},
+    {name: 'docProps/core.xml', data: enc.encode(core)},
+  ]);
+}
+function downloadAnswerDocx(en){
+  const blob = buildAnswerDocx(en);
+  const a = document.createElement('a');
+  const d = new Date(en.ts || Date.now());
+  const pad = n => String(n).padStart(2, '0');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'תשובה-משפטית-' + d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()) + '-' + pad(d.getHours()) + pad(d.getMinutes()) + '.docx';
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+}
+/* === end docx export === */
 
 /* ---------- saved ---------- */
 function renderSaved(){
