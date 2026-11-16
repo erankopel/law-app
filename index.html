@@ -77,6 +77,11 @@
   #gate p{color:var(--muted); font-size:13.5px; margin:0 0 14px}
   footer{padding:14px 16px 30px; text-align:center; color:var(--muted); font-size:12px; line-height:1.7}
   .note-area{width:100%; margin-top:8px; min-height:44px; font-size:14px}
+  .skillgrid{display:flex; flex-wrap:wrap; gap:8px; margin-bottom:6px}
+  .skillchip{display:inline-flex; align-items:center; gap:7px; padding:8px 12px; border-radius:999px; border:1px solid var(--line);
+    background:var(--panel); color:var(--txt); font-size:13.5px; font-weight:700; cursor:pointer; font-family:inherit}
+  .skillchip.on{background:var(--accent); color:#191204; border-color:var(--accent)}
+  .skgroup{font-size:13px; color:var(--muted); margin:12px 0 6px; font-weight:700}
   .hidden{display:none !important}
 </style>
 </head>
@@ -90,6 +95,7 @@
   <button data-view="verdicts" class="active">🔍 פסיקה</button>
   <button data-view="laws">📜 חקיקה</button>
   <button data-view="ask">🤖 שאל AI</button>
+  <button data-view="skills">🧩 סקילים</button>
   <button data-view="saved">⭐ שמורים</button>
 </nav>
 
@@ -218,6 +224,39 @@
     <div id="a-status" class="status"></div>
   </section>
 
+  <!-- ===== סקילים ===== -->
+  <section id="view-skills" class="view">
+    <div class="card">
+      <div style="font-size:14.5px; line-height:1.6">
+        עבודה עם הסקילים של פלאגין <b>legal</b>, כפי שהועלו לקונסולת ה־API שלך.
+        בחר סקיל אחד או יותר (עד 20), כתוב משימה, והוסף חומר רקע אם יש.
+        קלוד יעבוד לפי הוראות הסקיל, עם גישה לחיפוש בגילוי נאות ובספר החוקים הפתוח.
+        קבצים שהסקיל ייצור יוצעו להורדה, והתוצאה תישמר גם בהיסטוריה של לשונית שאל AI.
+      </div>
+      <div class="actions" style="margin-top:10px">
+        <button type="button" class="btn secondary small" id="sk-refresh">↻ רענן רשימת סקילים</button>
+        <span class="meta" style="align-self:center" id="sk-count"></span>
+      </div>
+    </div>
+    <div id="sk-status" class="status"></div>
+    <div id="sk-list"></div>
+    <form id="skform" class="card">
+      <label>המשימה</label>
+      <textarea id="sk-task" placeholder="למשל: הכן תדריך מחקר על סוגיית הפיצויים בגין אובדן השתכרות של עצמאי, עם אסמכתאות מעודכנות"></textarea>
+      <label>חומר רקע (אופציונלי): עובדות התיק, טקסט מסמך, נוסח פסק דין</label>
+      <textarea id="sk-material" style="min-height:110px" placeholder="הדבק כאן חומר שהסקיל יעבוד עליו"></textarea>
+      <details style="margin-top:10px">
+        <summary style="cursor:pointer; color:var(--muted); font-size:13.5px">מזהי סקילים ידנית (אם הרשימה לא נטענת)</summary>
+        <label>מזהים מופרדים בפסיק; יתווספו לבחירה מהרשימה</label>
+        <input type="text" id="sk-manual" placeholder="skill_..." dir="ltr" />
+      </details>
+      <div class="actions">
+        <button type="submit" class="btn" id="sk-submit">הרץ סקילים</button>
+      </div>
+    </form>
+    <div id="sk-results"></div>
+  </section>
+
   <!-- ===== שמורים ===== -->
   <section id="view-saved" class="view">
     <div id="s-status" class="status">הפריטים השמורים וההערות נשמרים במכשיר הזה בלבד.</div>
@@ -322,6 +361,8 @@ document.querySelectorAll('nav.tabs button').forEach(btn => {
     document.querySelectorAll('nav.tabs button').forEach(b => b.classList.toggle('active', b === btn));
     document.querySelectorAll('section.view').forEach(v => v.classList.toggle('active', v.id === 'view-' + btn.dataset.view));
     if(btn.dataset.view === 'saved') renderSaved();
+    if(btn.dataset.view === 'ask') renderHistory();
+    if(btn.dataset.view === 'skills') loadSkills();
     window.scrollTo({top: 0});
   });
 });
@@ -655,6 +696,123 @@ function downloadAnswerDocx(en){
   setTimeout(() => URL.revokeObjectURL(a.href), 4000);
 }
 /* === end docx export === */
+
+/* ---------- skills tab ---------- */
+const SKILL_LABELS = {
+  'asmachtaot-bemismach': 'אסמכתאות במסמך', 'brief': 'תדריך מחקר משפטי',
+  'chavat-daat-mumche-refui': 'חוות דעת מומחה רפואי', 'chipus-psika': 'חיפוש פסיקה בגילוי נאות',
+  'compliance-check': 'בדיקת ציות רגולטורי', 'dinei-avoda': 'דיני עבודה',
+  'dinei-mishpacha': 'דיני משפחה', 'dinei-nezikin': 'דיני נזיקין', 'dinei-reayot': 'דיני ראיות',
+  'hadlut-pirayon': 'חדלות פירעון ושיקום כלכלי', 'itur-mumche': 'איתור ובדיקת מומחה',
+  'ktiva-akademit': 'כתיבה משפטית אקדמית', 'legal-response': 'ניסוח תגובה משפטית',
+  'legal-risk-assessment': 'הערכת סיכון משפטי', 'meeting-briefing': 'הכנה לדיון ולפגישה',
+  'mekarkein': 'מקרקעין', 'mishpat-minhali': 'משפט מנהלי וחוקתי', 'mishpat-plili': 'משפט פלילי',
+  'nituach-psak-din': 'ניתוח פסק דין', 'profil-shofet': 'פרופיל שופט',
+  'review-contract': 'ניתוח חוזה', 'seder-din-ezrachi': 'סדר דין אזרחי',
+  'signature-request': 'בדיקה לפני חתימה', 'tachshiv-nezek': 'תחשיב נזק',
+  'triage-nda': 'מיון הסכם סודיות', 'vendor-check': 'מיפוי ישות ובדיקת נאותות',
+  'zikuk-sheelot': 'זיקוק שאלות מחקר',
+  'docx': 'מסמכי Word (מובנה)', 'xlsx': 'גיליונות Excel (מובנה)', 'pptx': 'מצגות (מובנה)', 'pdf': 'מסמכי PDF (מובנה)',
+};
+let skillsLoaded = false;
+const selectedSkills = new Map();
+function skillLabel(s){ return SKILL_LABELS[s.name] ? SKILL_LABELS[s.name] : s.name; }
+async function loadSkills(force){
+  if(skillsLoaded && !force) return;
+  const status = $('#sk-status'), list = $('#sk-list');
+  status.className = 'status'; status.textContent = 'טוען את רשימת הסקילים מהקונסולה...';
+  try{
+    const res = await apiFetch('/skills');
+    const data = await res.json().catch(() => ({}));
+    if(res.status === 501){ status.className = 'status err'; status.textContent = 'מפתח ה־API של קלוד עדיין לא הוגדר בשרת.'; return; }
+    if(!res.ok){ status.className = 'status err'; status.textContent = 'טעינת הסקילים נכשלה (' + res.status + '): ' + (data.error || '') + (data.detail ? ' — ' + data.detail : ''); return; }
+    const skills = data.skills || [];
+    const mine = skills.filter(s => s.source !== 'anthropic');
+    const builtin = skills.filter(s => s.source === 'anthropic');
+    const chip = s => `<button type="button" class="skillchip ${selectedSkills.has(s.id) ? 'on' : ''}" data-skill="${esc(s.id)}" data-stype="${esc(s.source === 'anthropic' ? 'anthropic' : 'custom')}" data-sname="${esc(s.name)}">${esc(skillLabel(s))}</button>`;
+    list.innerHTML =
+      (mine.length ? '<div class="skgroup">הסקילים שלי (' + mine.length + ')</div><div class="skillgrid">' + mine.map(chip).join('') + '</div>' : '') +
+      (builtin.length ? '<div class="skgroup">מובנים של Anthropic</div><div class="skillgrid">' + builtin.map(chip).join('') + '</div>' : '');
+    if(!skills.length) list.innerHTML = '<div class="status">לא נמצאו סקילים בחשבון. אפשר להזין מזהים ידנית למטה.</div>';
+    status.textContent = '';
+    $('#sk-count').textContent = skills.length ? 'נטענו ' + skills.length + ' סקילים' : '';
+    skillsLoaded = true;
+  }catch(e){
+    if(e.message !== 'unauthorized'){ status.className = 'status err'; status.textContent = 'טעינת הסקילים נכשלה. בדוק חיבור ונסה שוב.'; }
+  }
+}
+$('#sk-refresh').addEventListener('click', () => loadSkills(true));
+document.addEventListener('click', e => {
+  const chipEl = e.target.closest('[data-skill]');
+  if(chipEl){
+    const id = chipEl.dataset.skill;
+    if(selectedSkills.has(id)){ selectedSkills.delete(id); chipEl.classList.remove('on'); }
+    else{
+      if(selectedSkills.size >= 20){ $('#sk-status').textContent = 'אפשר לבחור עד 20 סקילים בהרצה אחת.'; return; }
+      selectedSkills.set(id, {skill_id: id, type: chipEl.dataset.stype, name: chipEl.dataset.sname});
+      chipEl.classList.add('on');
+    }
+    $('#sk-count').textContent = 'נבחרו ' + selectedSkills.size + ' סקילים';
+    return;
+  }
+  const fb = e.target.closest('[data-file]');
+  if(fb) downloadSkillFile(fb.dataset.file, fb.dataset.fname || '');
+});
+async function downloadSkillFile(id, name){
+  const status = $('#sk-status');
+  try{
+    const res = await apiFetch('/file?id=' + encodeURIComponent(id));
+    if(!res.ok) throw new Error('http ' + res.status);
+    const blob = await res.blob();
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = name || 'skill-file';
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+  }catch(e){
+    status.className = 'status err'; status.textContent = 'הורדת הקובץ נכשלה. נסה שוב.';
+  }
+}
+$('#skform').addEventListener('submit', async e => {
+  e.preventDefault();
+  const status = $('#sk-status');
+  const skills = [...selectedSkills.values()].map(s => ({skill_id: s.skill_id, type: s.type}));
+  const names = [...selectedSkills.values()].map(s => SKILL_LABELS[s.name] || s.name);
+  $('#sk-manual').value.split(',').map(s => s.trim()).filter(Boolean).forEach(id => {
+    if(!skills.some(s => s.skill_id === id)){ skills.push({skill_id: id, type: 'custom'}); names.push(id); }
+  });
+  const task = $('#sk-task').value.trim();
+  if(!skills.length){ status.className = 'status err'; status.textContent = 'בחר לפחות סקיל אחד מהרשימה, או הזן מזהה ידנית.'; return; }
+  if(!task){ status.className = 'status err'; status.textContent = 'כתוב את המשימה.'; return; }
+  const material = $('#sk-material').value.trim();
+  status.className = 'status'; status.textContent = 'הסקילים עובדים... הרצה עם סקיל עשויה לקחת דקה ויותר, לא לסגור את הדף.';
+  $('#sk-submit').disabled = true;
+  try{
+    const res = await apiFetch('/skill-run', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({skills, task, material})});
+    const data = await res.json().catch(() => ({}));
+    if(!res.ok){ status.className = 'status err'; status.textContent = 'שגיאה מהשרת (' + res.status + '): ' + (data.error || '') + (data.detail ? ' — ' + data.detail : ''); return; }
+    if(!data.answer && !(data.files || []).length) throw new Error('bad response');
+    const entry = {
+      id: 'h' + Date.now(), ts: Date.now(),
+      q: ('🧩 ' + names.join(', ') + ' — ' + task).slice(0, 500),
+      answer: data.answer || '(הסקיל יצר קבצים; ראה קישורי ההורדה בלשונית הסקילים)',
+      sources: data.sources || [],
+    };
+    addHistory(entry);
+    let html = exchangeHtml(entry);
+    if((data.files || []).length){
+      html += `<div class="result"><h3>📁 קבצים שהסקיל יצר</h3><div class="links">` +
+        data.files.map(f => `<button type="button" class="chip" data-file="${esc(f.id)}" data-fname="${esc(f.name || '')}">⬇ ${esc(f.name || 'קובץ')}</button>`).join('') +
+        `</div></div>`;
+    }
+    $('#sk-results').innerHTML = html;
+    status.textContent = 'הסתיים. התוצאה נשמרה גם בהיסטוריה בלשונית שאל AI.';
+  }catch(err){
+    if(err.message !== 'unauthorized'){ status.className = 'status err'; status.textContent = 'ההרצה נכשלה. נסה שוב בעוד רגע.'; }
+  }finally{
+    $('#sk-submit').disabled = false;
+  }
+});
 
 /* ---------- saved ---------- */
 function renderSaved(){

@@ -5,11 +5,15 @@
 //   GET  /api/laws     -> proxy: Giluy Naot laws list
 //   GET  /api/law-text -> law full text from Wikisource (open law book)
 //   POST /api/ask      -> Claude-powered research over the same sources
+//   GET  /api/skills   -> list the account's API Skills (custom + Anthropic built-ins)
+//   POST /api/skill-run-> run a task with selected Skills attached (container.skills)
+//   GET  /api/file     -> download a file a Skill created (Files API proxy)
 // Secrets required: APP_PIN, ANTHROPIC_API_KEY
 
 const GN = 'https://www.giluy-naot.org.il';
 const WIKI_API = 'https://he.wikisource.org/w/api.php';
 const ANTHROPIC = 'https://api.anthropic.com/v1/messages';
+const ANTHROPIC_V1 = 'https://api.anthropic.com/v1';
 const DEFAULT_MODEL = 'claude-sonnet-5-5';
 const EFFORTS = ['low', 'medium', 'high', 'xhigh', 'max'];
 const UA = { 'User-Agent': 'law-app/1.0 (private legal research; contact: owner)' };
@@ -263,6 +267,166 @@ async function handleAsk(request, env) {
   return json({ error: 'too_many_rounds' }, 502);
 }
 
+/* ---------- API Skills (the legal plugin skills Eran uploaded to the Console) ---------- */
+
+function anthropicHeaders(env, extra) {
+  return {
+    'Content-Type': 'application/json',
+    'x-api-key': env.ANTHROPIC_API_KEY,
+    'anthropic-version': '2023-06-01',
+    ...(extra || {}),
+  };
+}
+
+async function handleSkillsList(env) {
+  if (!env.ANTHROPIC_API_KEY) return json({ error: 'no_key' }, 501);
+  const skills = [];
+  let page = null;
+  for (let i = 0; i < 3; i++) {
+    const u = ANTHROPIC_V1 + '/skills?limit=100' + (page ? '&page=' + encodeURIComponent(page) : '');
+    const res = await fetch(u, { headers: anthropicHeaders(env) });
+    if (!res.ok) {
+      const t = await res.text();
+      return json({ error: 'anthropic_' + res.status, detail: t.slice(0, 300) }, 502);
+    }
+    const data = await res.json();
+    for (const s of data.data || []) {
+      const source = typeof s.source === 'string' ? s.source : ((s.source && s.source.type) || '');
+      skills.push({
+        id: s.id,
+        name: s.display_name || s.display_title || s.name || s.id,
+        source,
+      });
+    }
+    page = data.next_page || null;
+    if (!page) break;
+  }
+  return json({ skills });
+}
+
+const SKILL_SYSTEM = [
+  'אתה עוזר עבודה משפטית ואקדמית לסטודנט למשפטים בישראל. ענה בעברית בלבד.',
+  'המשתמש בחר מיומנויות (Skills) שצורפו לבקשה זו. פעל לפי הוראות המיומנויות שנבחרו: קרא את קבצי ההוראות שלהן שבמיכל ויישם את שלבי העבודה שלהן על המשימה ועל חומר הרקע.',
+  'לתשומת לבך: סביבת הריצה (המיכל) חסרת גישה לאינטרנט, ולכן סקריפטים שרצים בתוכה אינם יכולים לקרוא לממשקים חיצוניים. לצורכי מחקר השתמש בכלים שניתנו לך בבקשה זו: search_verdicts ו־get_verdict_text לפסיקה בגילוי נאות, search_laws ו־get_law_text לחקיקה מספר החוקים הפתוח, וכן web_search ו־web_fetch.',
+  'אסור להמציא פסקי דין, מספרי תיקים או סעיפי חוק. מה שלא נמצא, אמור במפורש.',
+  'אם המיומנות מייצרת מסמך או קובץ, צור אותו בפועל במיכל (למשל קובץ docx), כדי שיוצע למשתמש להורדה.',
+  'בסוף העבודה סכם בעברית מה נעשה, לפי מבנה הפלט שהמיומנות דורשת.',
+].join('\n');
+
+const SKILL_TOOLS = [
+  { type: 'code_execution_20250825', name: 'code_execution' },
+  { type: 'web_search_20250305', name: 'web_search', max_uses: 10 },
+  { type: 'web_fetch_20250910', name: 'web_fetch', max_uses: 10 },
+  ...TOOLS,
+];
+
+function collectFileIds(node, out) {
+  if (!node || typeof node !== 'object') return;
+  if (Array.isArray(node)) { for (const x of node) collectFileIds(x, out); return; }
+  if (typeof node.file_id === 'string' && node.file_id) {
+    out.push({ id: node.file_id, name: node.filename || node.name || '' });
+  }
+  for (const k of Object.keys(node)) collectFileIds(node[k], out);
+}
+
+async function handleSkillRun(request, env) {
+  if (!env.ANTHROPIC_API_KEY) return json({ error: 'no_key' }, 501);
+  let body;
+  try { body = await request.json(); } catch (e) { return json({ error: 'bad_json' }, 400); }
+  const skillsIn = Array.isArray(body.skills) ? body.skills : [];
+  const skills = skillsIn
+    .filter(s => s && typeof s.skill_id === 'string' && s.skill_id)
+    .slice(0, 20)
+    .map(s => ({ type: s.type === 'anthropic' ? 'anthropic' : 'custom', skill_id: s.skill_id, version: 'latest' }));
+  if (!skills.length) return json({ error: 'no_skills' }, 400);
+  const task = String(body.task || '').trim().slice(0, 4000);
+  if (!task) return json({ error: 'empty_task' }, 400);
+  const material = String(body.material || '').trim().slice(0, 30000);
+  const prompt = material ? task + '\n\nחומר רקע:\n' + material : task;
+
+  const sources = [];
+  const fileMap = new Map();
+  const model = String(env.MODEL || DEFAULT_MODEL);
+  const effortRaw = String(env.EFFORT || 'high').toLowerCase();
+  const effort = EFFORTS.includes(effortRaw) ? effortRaw : null;
+  const messages = [{ role: 'user', content: prompt }];
+  let containerId = null;
+  let answer = '';
+  for (let round = 0; round < 10; round++) {
+    const container = containerId ? { id: containerId, skills } : { skills };
+    const payload = {
+      model, max_tokens: 32000, system: SKILL_SYSTEM,
+      tools: SKILL_TOOLS, messages, container,
+    };
+    if (effort) payload.output_config = { effort };
+    const res = await fetch(ANTHROPIC, {
+      method: 'POST',
+      headers: anthropicHeaders(env),
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      const t = await res.text();
+      return json({ error: 'anthropic_' + res.status, detail: t.slice(0, 300) }, 502);
+    }
+    const data = await res.json();
+    if (data.container && data.container.id) containerId = data.container.id;
+    const found = [];
+    collectFileIds(data.content, found);
+    for (const f of found) if (!fileMap.has(f.id)) fileMap.set(f.id, f);
+    messages.push({ role: 'assistant', content: data.content });
+    const toolUses = (data.content || []).filter(b => b.type === 'tool_use' && TOOLS.some(t => t.name === b.name));
+    if (toolUses.length) {
+      const results = [];
+      for (const tu of toolUses) {
+        try {
+          const out = await runTool(tu.name, tu.input || {}, sources);
+          results.push({ type: 'tool_result', tool_use_id: tu.id, content: JSON.stringify(out).slice(0, 24000) });
+        } catch (e) {
+          results.push({ type: 'tool_result', tool_use_id: tu.id, content: 'שגיאה בביצוע הכלי: ' + e.message, is_error: true });
+        }
+      }
+      messages.push({ role: 'user', content: results });
+      continue;
+    }
+    if (data.stop_reason === 'pause_turn') continue;
+    answer = (data.content || []).filter(b => b.type === 'text').map(b => b.text).join('\n').trim();
+    break;
+  }
+  const seen = new Set(); const uniq = [];
+  for (const s of sources) { if (!seen.has(s.url)) { seen.add(s.url); uniq.push(s); } }
+  return json({ answer, sources: uniq.slice(0, 10), files: [...fileMap.values()].slice(0, 10) });
+}
+
+async function handleFile(url, env) {
+  if (!env.ANTHROPIC_API_KEY) return json({ error: 'no_key' }, 501);
+  const id = url.searchParams.get('id') || '';
+  if (!/^[A-Za-z0-9_-]+$/.test(id)) return json({ error: 'bad_file_id' }, 400);
+  const headers = anthropicHeaders(env, { 'anthropic-beta': 'files-api-2025-04-14' });
+  let filename = 'skill-file';
+  let mime = 'application/octet-stream';
+  try {
+    const meta = await fetch(ANTHROPIC_V1 + '/files/' + encodeURIComponent(id), { headers });
+    if (meta.ok) {
+      const m = await meta.json();
+      if (m.filename) filename = m.filename;
+      if (m.mime_type) mime = m.mime_type;
+    }
+  } catch (e) { /* fall through with defaults */ }
+  const res = await fetch(ANTHROPIC_V1 + '/files/' + encodeURIComponent(id) + '/content', { headers });
+  if (!res.ok) {
+    const t = await res.text();
+    return json({ error: 'anthropic_' + res.status, detail: t.slice(0, 300) }, 502);
+  }
+  return new Response(res.body, {
+    status: 200,
+    headers: {
+      'Content-Type': mime,
+      'Content-Disposition': "attachment; filename*=UTF-8''" + encodeURIComponent(filename),
+      'Cache-Control': 'no-store',
+    },
+  });
+}
+
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
@@ -289,6 +453,9 @@ export default {
         return json({ title, html });
       }
       if (path === '/api/ask' && request.method === 'POST') return await handleAsk(request, env);
+      if (path === '/api/skills' && request.method === 'GET') return await handleSkillsList(env);
+      if (path === '/api/skill-run' && request.method === 'POST') return await handleSkillRun(request, env);
+      if (path === '/api/file' && request.method === 'GET') return await handleFile(url, env);
       return json({ error: 'not_found' }, 404);
     } catch (e) {
       return json({ error: 'upstream', detail: String(e.message || e).slice(0, 200) }, 502);
