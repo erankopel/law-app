@@ -295,8 +295,7 @@ function anthropicHeaders(env, extra) {
   };
 }
 
-async function handleSkillsList(env) {
-  if (!env.ANTHROPIC_API_KEY) return json({ error: 'no_key' }, 501);
+async function listSkills(env) {
   const skills = [];
   let page = null;
   for (let i = 0; i < 3; i++) {
@@ -304,7 +303,9 @@ async function handleSkillsList(env) {
     const res = await fetch(u, { headers: anthropicHeaders(env) });
     if (!res.ok) {
       const t = await res.text();
-      return json({ error: 'anthropic_' + res.status, detail: t.slice(0, 300) }, 502);
+      const err = new Error('anthropic_' + res.status);
+      err.detail = t.slice(0, 300);
+      throw err;
     }
     const data = await res.json();
     for (const s of data.data || []) {
@@ -318,8 +319,47 @@ async function handleSkillsList(env) {
     page = data.next_page || null;
     if (!page) break;
   }
-  return json({ skills });
+  return skills;
 }
+
+async function handleSkillsList(env) {
+  if (!env.ANTHROPIC_API_KEY) return json({ error: 'no_key' }, 501);
+  try {
+    return json({ skills: await listSkills(env) });
+  } catch (e) {
+    return json({ error: e.message, detail: e.detail || '' }, 502);
+  }
+}
+
+const SKILL_DESCS = {
+ "asmachtaot-bemismach": "שגרת המקורות והאימות למסמך שאינו משפטי מלכתחילה אך נשען על דין ישראלי: חוזר, נוהל, מכתב רשמי, נייר עמדה, הצעת מחקר, מאמר או מצגת שמופיעים בהם חוק, תקנה, סעיף, תוספת או פסק דין.",
+ "brief": "תדריך מחקר משפטי במקורות ישראליים.",
+ "chavat-daat-mumche-refui": "בניית שלד לחוות דעת מומחה רפואי בתביעת רשלנות רפואית לפי הדין הישראלי, על בסיס ספרות מאומתת והנחיות קליניות המצוטטות מילה במילה.",
+ "chipus-psika": "איתור פסקי דין והחלטות של בתי המשפט בישראל, מכל הערכאות, במאגר \"גילוי נאות\" — תחילה דרך מחבר ה-MCP או ה-API הרשמי עם המפתח האישי, ובגיבוי בדפדפן הפנימי בטופס החיפוש המובנה: חיפוש לפי מספר תיק, סוג הליך, שם צד, שופט, ערכאה, תאריכים",
+ "compliance-check": "בדיקת ציות לרגולציה הישראלית עבור פעולה, מוצר או יוזמה.",
+ "dinei-avoda": "ניתוח סוגיות בדיני עבודה לפי הדין הישראלי.",
+ "dinei-mishpacha": "ניתוח סוגיות בדיני משפחה לפי הדין הישראלי.",
+ "dinei-nezikin": "ניתוח סוגיות בדיני נזיקין לפי הדין הישראלי.",
+ "dinei-reayot": "ניתוח שאלות בדיני ראיות לפי הדין הישראלי.",
+ "hadlut-pirayon": "ניתוח סוגיות בחדלות פירעון ושיקום כלכלי לפי הדין הישראלי.",
+ "itur-mumche": "איתור ובדיקת רקע של מומחה רפואי לחוות דעת בהליך משפטי בישראל: מועמדים לפי תחום ואזור, תחילה מהמינויים בפועל בפסיקה ובנוסף מהאלפון mumhe.com; ניסיון המומחה בפסיקה בגילוי נאות; סיווג התפקיד בכל החלטה (מומחה מטעם בית המשפט, מומחה מטע",
+ "ktiva-akademit": "ליווי כתיבה משפטית אקדמית בעברית, ובכללה עבודה סמינריונית, רפרט ומאמר.",
+ "legal-response": "ניסוח מכתבים ותגובות משפטיות לפי הדין הישראלי, עם בדיקות הסלמה מובנות.",
+ "legal-risk-assessment": "הערכת סיכון משפטי במדרג מובנה לפי חומרה והסתברות, בהקשר הדין הישראלי.",
+ "meeting-briefing": "הכנה מובנית לדיון, לפגישה משפטית, לסמינר או למוט קורט, ומעקב אחר משימות שנגזרות מהם.",
+ "mekarkein": "ניתוח סוגיות במקרקעין לפי הדין הישראלי.",
+ "mishpat-minhali": "ניתוח סוגיות במשפט מנהלי וחוקתי לפי הדין הישראלי, לרבות ביקורת שיפוטית על רשויות.",
+ "mishpat-plili": "ניתוח סוגיות במשפט פלילי מהותי ובסדר דין פלילי לפי הדין הישראלי.",
+ "nituach-psak-din": "ניתוח מובנה של פסק דין ישראלי, לרבות חילוץ ההלכה והבחנתה מאמרת אגב.",
+ "profil-shofet": "דף פרופיל על שופט או שופטת בהליך, מתוך פסיקתם הקודמת בגילוי נאות ובדגש על תחומים דומים להליך הנוכחי: היקף ותמהיל התיקים, סטטיסטיקה של הכרעות על מדגם שנקרא במלואו, הוצאות, ניהול ההליך ומשכו, יחס לחוות דעת מומחים, שיטת ההנמקה והכתיב",
+ "review-contract": "ניתוח חוזה לפי דיני החוזים הישראליים, כולל זיהוי סעיפים בעייתיים והצעות ניסוח.",
+ "seder-din-ezrachi": "ניתוח שאלות בסדר דין אזרחי לפי תקנות סדר הדין האזרחי, התשע\"ט-2018.",
+ "signature-request": "בדיקת דרישות חתימה, כתב ואימות במסמך משפטי לפי הדין הישראלי, לפני הוצאתו לחתימה.",
+ "tachshiv-nezek": "חישובים מספריים בתיק נזקי גוף לפי הדין הישראלי, במנוע פנימי וללא תלות באתר חיצוני. שקלול אחוזי נכות בשיטת יתרת הכושר, כאב וסבל לפי תקנות הפלת״ד 1976, הסכום המקסימלי ותקרת שילוש השכר, הפרשי הצמדה וריבית לפי חוק פסיקת ריבית והצמדה א",
+ "triage-nda": "מיון מהיר של הסכם סודיות והסכמי אי-תחרות לפי הדין הישראלי, וסיווגם ירוק, צהוב או אדום.",
+ "vendor-check": "מיפוי ישות ובדיקת נאותות במקורות ישראליים פתוחים, לרבות התקשרויות והליכים.",
+ "zikuk-sheelot": "זיקוק שאלות מחקר משפטיות מתוך מסמכי תיק, לפני שמתחילים לחפש: קריאה מלאה ונמדדת של המסמכים, עד שש שאלות הבהרה, מפת סוגיות, ולכל שאלה שני נוסחים, אחד בהקשר התיק ואחד מופשט לחיפוש, עם תוכנית חיפוש בגילוי נאות ובמאגרי החקיקה הפתוחים. "
+};
 
 const SKILL_SYSTEM = [
   'אתה עוזר עבודה משפטית ואקדמית לסטודנט למשפטים בישראל. ענה בעברית בלבד.',
@@ -414,6 +454,56 @@ async function handleSkillRun(request, env) {
   return json({ answer, sources: uniq.slice(0, 10), files: [...fileMap.values()].slice(0, 10) });
 }
 
+const ROUTE_SYSTEM = [
+  'אתה מנתב משימות משפטיות ואקדמיות למיומנויות (Skills) מתוך קטלוג נתון. קרא את המשימה ובחר את המיומנויות המתאימות לה באמת, בין אחת לארבע.',
+  'החזר JSON בלבד, בלי שום טקסט נוסף, במבנה: {"skills": ["שם-מיומנות"], "reason": "הסבר קצר בעברית לבחירה"}.',
+  'השמות חייבים להופיע בדיוק כפי שהם בקטלוג.',
+].join('\n');
+
+async function handleSkillRoute(request, env) {
+  if (!env.ANTHROPIC_API_KEY) return json({ error: 'no_key' }, 501);
+  let body;
+  try { body = await request.json(); } catch (e) { return json({ error: 'bad_json' }, 400); }
+  const task = String(body.task || '').trim().slice(0, 2000);
+  if (!task) return json({ error: 'empty_task' }, 400);
+  let all;
+  try { all = await listSkills(env); } catch (e) { return json({ error: e.message, detail: e.detail || '' }, 502); }
+  const mine = all.filter(s => s.source !== 'anthropic');
+  if (!mine.length) return json({ error: 'no_skills_in_account' }, 404);
+  const catalog = mine.map(s => '- ' + s.name + ': ' + (SKILL_DESCS[s.name] || '')).join('\n');
+  const model = String(env.MODEL || DEFAULT_MODEL);
+  const res = await fetch(ANTHROPIC, {
+    method: 'POST',
+    headers: anthropicHeaders(env),
+    body: JSON.stringify({
+      model, max_tokens: 1200,
+      system: ROUTE_SYSTEM,
+      messages: [{ role: 'user', content: 'הקטלוג:\n' + catalog + '\n\nהמשימה:\n' + task }],
+    }),
+  });
+  if (!res.ok) {
+    const t = await res.text();
+    return json({ error: 'anthropic_' + res.status, detail: t.slice(0, 300) }, 502);
+  }
+  const data = await res.json();
+  const text = (data.content || []).filter(b => b.type === 'text').map(b => b.text).join('\n');
+  let chosen = [];
+  let reason = '';
+  try {
+    const m = text.match(/\{[\s\S]*\}/);
+    const parsed = JSON.parse(m[0]);
+    if (Array.isArray(parsed.skills)) chosen = parsed.skills.map(String);
+    reason = String(parsed.reason || '');
+  } catch (e) { /* fall back to a name scan below */ }
+  if (!chosen.length) chosen = mine.filter(s => text.includes(s.name)).map(s => s.name);
+  const picked = [];
+  for (const name of chosen) {
+    const hit = mine.find(s => s.name === name) || mine.find(s => s.name.toLowerCase() === String(name).toLowerCase());
+    if (hit && !picked.some(p => p.skill_id === hit.id)) picked.push({ skill_id: hit.id, type: 'custom', name: hit.name });
+  }
+  return json({ skills: picked.slice(0, 4), reason });
+}
+
 async function handleFile(url, env) {
   if (!env.ANTHROPIC_API_KEY) return json({ error: 'no_key' }, 501);
   const id = url.searchParams.get('id') || '';
@@ -472,6 +562,7 @@ export default {
       if (path === '/api/ask' && request.method === 'POST') return await handleAsk(request, env);
       if (path === '/api/skills' && request.method === 'GET') return await handleSkillsList(env);
       if (path === '/api/skill-run' && request.method === 'POST') return await handleSkillRun(request, env);
+      if (path === '/api/skill-route' && request.method === 'POST') return await handleSkillRoute(request, env);
       if (path === '/api/file' && request.method === 'GET') return await handleFile(url, env);
       return json({ error: 'not_found' }, 404);
     } catch (e) {

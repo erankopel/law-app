@@ -235,6 +235,7 @@
       <div style="font-size:14.5px; line-height:1.6">
         עבודה עם הסקילים של פלאגין <b>legal</b>, כפי שהועלו לקונסולת ה־API שלך.
         בחר סקיל אחד או יותר (עד 20), כתוב משימה, והוסף חומר רקע אם יש.
+        <b>אפשר גם לא לבחור כלל: המנוע יזהה את הסקילים המתאימים למשימה ויטען אותם בעצמו.</b>
         קלוד יעבוד לפי הוראות הסקיל, עם גישה לחיפוש בגילוי נאות ובספר החוקים הפתוח.
         קבצים שהסקיל ייצור יוצעו להורדה, והתוצאה תישמר גם בהיסטוריה של לשונית שאל AI.
       </div>
@@ -797,10 +798,25 @@ $('#skform').addEventListener('submit', async e => {
     if(!skills.some(s => s.skill_id === id)){ skills.push({skill_id: id, type: 'custom'}); names.push(id); }
   });
   const task = $('#sk-task').value.trim();
-  if(!skills.length){ status.className = 'status err'; status.textContent = 'בחר לפחות סקיל אחד מהרשימה, או הזן מזהה ידנית.'; return; }
   if(!task){ status.className = 'status err'; status.textContent = 'כתוב את המשימה.'; return; }
+  let routeNote = '';
+  if(!skills.length){
+    status.className = 'status'; status.textContent = '🔍 לא נבחרו סקילים, מזהה את המתאימים למשימה...';
+    try{
+      const rres = await apiFetch('/skill-route', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({task})});
+      const rdata = await rres.json().catch(() => ({}));
+      if(!rres.ok) throw new Error('route ' + rres.status);
+      const routed = rdata.skills || [];
+      if(!routed.length){ status.className = 'status err'; status.textContent = 'המנוע לא זיהה סקיל מתאים למשימה. בחר סקילים ידנית מהרשימה.'; return; }
+      routed.forEach(s => { skills.push({skill_id: s.skill_id, type: s.type}); names.push(SKILL_LABELS[s.name] || s.name); });
+      routeNote = 'נבחרו אוטומטית: ' + names.join(', ') + (rdata.reason ? ' — ' + rdata.reason : '');
+    }catch(e2){
+      if(e2.message === 'unauthorized') return;
+      status.className = 'status err'; status.textContent = 'זיהוי הסקילים נכשל. בחר סקילים ידנית מהרשימה.'; return;
+    }
+  }
   const material = $('#sk-material').value.trim();
-  status.className = 'status'; status.textContent = 'הסקילים עובדים... הרצה עם סקיל עשויה לקחת דקה ויותר, לא לסגור את הדף.';
+  status.className = 'status'; status.textContent = (routeNote ? routeNote + ' · ' : '') + 'הסקילים עובדים... הרצה עם סקיל עשויה לקחת דקה ויותר, לא לסגור את הדף.';
   $('#sk-submit').disabled = true;
   try{
     const res = await apiFetch('/skill-run', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({skills, task, material})});
@@ -821,7 +837,7 @@ $('#skform').addEventListener('submit', async e => {
         `</div></div>`;
     }
     $('#sk-results').innerHTML = html;
-    status.textContent = 'הסתיים. התוצאה נשמרה גם בהיסטוריה בלשונית שאל AI.';
+    status.textContent = 'הסתיים. ' + (routeNote ? routeNote + ' · ' : '') + 'התוצאה נשמרה גם בהיסטוריה בלשונית שאל AI.';
   }catch(err){
     if(err.message !== 'unauthorized'){ status.className = 'status err'; status.textContent = 'ההרצה נכשלה. נסה שוב בעוד רגע.'; }
   }finally{
