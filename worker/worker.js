@@ -36,7 +36,7 @@ async function gnSearch(params) {
 }
 
 async function gnLaws(search) {
-  const url = GN + '/api/laws?search=' + encodeURIComponent(search) + '&page=1';
+  const url = GN + '/api/laws?q=' + encodeURIComponent(search) + '&page=1';
   const res = await fetch(url, { headers: UA });
   if (!res.ok) throw new Error('gn laws ' + res.status);
   return res.json();
