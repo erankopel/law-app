@@ -67,6 +67,14 @@ async function searchLaws(search) {
   return res.json();
 }
 
+async function verdictText(id) {
+  const res = await fetch(GN + '/verdict/' + encodeURIComponent(id), { headers: UA });
+  if (!res.ok) throw new Error('gn verdict ' + res.status);
+  const html = await res.text();
+  const noScripts = html.replace(/<script[\s\S]*?<\/script>/gi, ' ').replace(/<style[\s\S]*?<\/style>/gi, ' ');
+  return stripHtml(noScripts).slice(0, 16000);
+}
+
 async function wikiText(title) {
   const u = WIKI_API + '?action=parse&page=' + encodeURIComponent(title) +
     '&prop=text&format=json&formatversion=2&disableeditsection=1';
@@ -99,7 +107,7 @@ function trimVerdict(r) {
 const TOOLS = [
   {
     name: 'search_verdicts',
-    description: 'חיפוש פסקי דין והחלטות במאגר גילוי נאות. החזר תוצאות עם תקציר וקישור לקובץ המקור.',
+    description: 'חיפוש פסקי דין והחלטות במאגר גילוי נאות. מחזיר תקצירים בלבד, וכן שדה id לכל פסק דין, לקריאת הנוסח המלא באמצעות get_verdict_text.',
     input_schema: {
       type: 'object',
       properties: {
@@ -132,6 +140,15 @@ const TOOLS = [
       type: 'object',
       properties: { title: { type: 'string', description: 'כותרת דף החוק בוויקיטקסט' } },
       required: ['title'],
+    },
+  },
+  {
+    name: 'get_verdict_text',
+    description: 'קריאת הנוסח המלא של פסק דין מתוך דף פסק הדין בגילוי נאות, לפי שדה id שהוחזר מ-search_verdicts. חובה לקרוא כך את פסקי הדין המרכזיים לפני ניסוח התשובה, ולא להסתפק בתקצירים.',
+    input_schema: {
+      type: 'object',
+      properties: { id: { type: 'string', description: 'מזהה פסק הדין (id) מתוצאות search_verdicts' } },
+      required: ['id'],
     },
   },
 ];
@@ -173,12 +190,19 @@ async function runTool(name, input, sources) {
     sources.push({ title: input.title, url: 'https://he.wikisource.org/wiki/' + encodeURIComponent(input.title.replace(/ /g, '_')) });
     return { title: input.title, text };
   }
+  if (name === 'get_verdict_text') {
+    const text = await verdictText(input.id);
+    const url = GN + '/verdict/' + input.id;
+    sources.push({ title: 'פסק הדין המלא בגילוי נאות', url });
+    return { url, text };
+  }
   throw new Error('unknown tool ' + name);
 }
 
 const SYSTEM = [
   'אתה עוזר מחקר משפטי לסטודנט למשפטים בישראל. ענה בעברית בלבד.',
   'לכל שאלה עובדתית על פסיקה או חקיקה חובה להשתמש בכלים: search_verdicts לפסיקה, search_laws לחקיקה, get_law_text לקריאת נוסח חוק.',
+  'תוצאות search_verdicts הן תקצירים בלבד. לפני ניסוח התשובה קרא באמצעות get_verdict_text את נוסחם המלא של פסק הדין הרלוונטי ביותר, או של שני פסקי הדין הרלוונטיים ביותר, ובסס את התשובה על הנוסח המלא.',
   'אסור להמציא פסקי דין, מספרי תיקים, שמות שופטים או סעיפי חוק. מה שלא נמצא בכלים, אמור במפורש שלא נמצא.',
   'בכל טענה משפטית ציין אסמכתה: שם פסק הדין ומספר התיק, או שם החוק ומספר הסעיף.',
   'מבנה התשובה: פתיחה קצרה עם התשובה, אחריה פירוט קצר, ולבסוף שורת "לתשומת לב" אם יש מגבלה (למשל שהתקציר אינו תחליף לקובץ המקור).',
@@ -197,7 +221,7 @@ async function handleAsk(request, env) {
   const effortRaw = String(env.EFFORT || 'high').toLowerCase();
   const effort = EFFORTS.includes(effortRaw) ? effortRaw : null;
   const messages = [{ role: 'user', content: question }];
-  for (let round = 0; round < 5; round++) {
+  for (let round = 0; round < 6; round++) {
     const payload = {
       model, max_tokens: 8000, system: SYSTEM,
       tools: TOOLS, messages,
