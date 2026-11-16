@@ -186,9 +186,6 @@ async function runTool(name, input, sources) {
     if (input.date_to) p.date_to = input.date_to;
     const data = await gnSearch(p);
     const results = (data.results || []).map(trimVerdict);
-    for (const r of results) {
-      if (r.pdf_url) sources.push({ title: [r.case_type, r.case_number, r.parties].filter(Boolean).join(' '), url: r.pdf_url });
-    }
     return { results };
   }
   if (name === 'search_laws') {
@@ -199,9 +196,6 @@ async function runTool(name, input, sources) {
       wikisource_title: l.wikisource_url ? decodeURIComponent(l.wikisource_url.split('/wiki/')[1] || '') : '',
       wikisource_url: l.wikisource_url || '', knesset_url: l.knesset_url || '',
     }));
-    for (const l of items) {
-      if (l.wikisource_url) sources.push({ title: l.name, url: l.wikisource_url });
-    }
     return { items };
   }
   if (name === 'get_law_text') {
