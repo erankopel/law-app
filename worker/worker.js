@@ -409,7 +409,9 @@ async function handleSkillRun(request, env) {
   const messages = [{ role: 'user', content: prompt }];
   let containerId = null;
   let answer = '';
-  for (let round = 0; round < 10; round++) {
+  let lastStop = '';
+  let lastTypes = '';
+  for (let round = 0; round < 25; round++) {
     const container = containerId ? { id: containerId, skills } : { skills };
     const payload = {
       model, max_tokens: 32000, system: SKILL_SYSTEM,
@@ -426,6 +428,10 @@ async function handleSkillRun(request, env) {
       return json({ error: 'anthropic_' + res.status, detail: t.slice(0, 300) }, 502);
     }
     const data = await res.json();
+    lastStop = data.stop_reason || '';
+    lastTypes = (data.content || []).map(b => b.type).join(',');
+    const roundText = (data.content || []).filter(b => b.type === 'text').map(b => b.text).join('\n').trim();
+    if (roundText) answer = answer ? answer + '\n' + roundText : roundText;
     if (data.container && data.container.id) containerId = data.container.id;
     const found = [];
     collectFileIds(data.content, found);
@@ -446,11 +452,13 @@ async function handleSkillRun(request, env) {
       continue;
     }
     if (data.stop_reason === 'pause_turn') continue;
-    answer = (data.content || []).filter(b => b.type === 'text').map(b => b.text).join('\n').trim();
     break;
   }
   const seen = new Set(); const uniq = [];
   for (const s of sources) { if (!seen.has(s.url)) { seen.add(s.url); uniq.push(s); } }
+  if (!answer && !fileMap.size) {
+    return json({ error: 'empty_run', detail: 'stop=' + lastStop + ' types=' + lastTypes }, 502);
+  }
   return json({ answer, sources: uniq.slice(0, 10), files: [...fileMap.values()].slice(0, 10) });
 }
 
