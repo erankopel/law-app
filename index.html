@@ -68,6 +68,11 @@
   .msg .srclinks{margin-top:8px; display:flex; flex-direction:column; gap:4px}
   .msg .srclinks a{font-size:13px}
   .exchange{display:contents}
+  .hist-head{display:flex; align-items:center; gap:8px; width:100%; text-align:start; padding:10px 12px; border-radius:12px;
+    border:1px solid var(--line); background:var(--panel); color:var(--txt); cursor:pointer; font-family:inherit; font-size:14px}
+  .hist-head .hist-q{flex:1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; font-weight:700}
+  .hist-head .hist-date{color:var(--muted); font-size:12px; white-space:nowrap}
+  .hist-body{display:flex; flex-direction:column; gap:10px}
   .msg .msg-actions{margin-top:9px; display:flex; gap:8px; flex-wrap:wrap}
   .msg .msg-actions button{font-size:12.5px; font-weight:700; padding:6px 11px; border-radius:999px;
     border:1px solid var(--line); background:var(--panel2); color:var(--txt); cursor:pointer; font-family:inherit}
@@ -510,12 +515,12 @@ $('#aform').addEventListener('submit', async e => {
   const q = $('#a-q').value.trim();
   if(!q) return;
   const chat = $('#chat'), status = $('#a-status');
-  chat.insertAdjacentHTML('beforeend', `<div class="msg user" id="a-temp">${esc(q)}</div>`);
+  chat.insertAdjacentHTML('afterbegin', `<div class="msg user" id="a-temp">${esc(q)}</div>`);
   setHistOpen(true);
   $('#a-q').value = '';
   status.className = 'status'; status.textContent = 'קלוד מחפש ומנסח תשובה... זה עשוי לקחת כחצי דקה.';
   $('#a-submit').disabled = true;
-  window.scrollTo({top: document.body.scrollHeight});
+  $('#hist-wrap').scrollIntoView({block: 'start'});
   try{
     const res = await apiFetch('/ask', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({question: q})});
     const data = await res.json().catch(() => ({}));
@@ -533,13 +538,13 @@ $('#aform').addEventListener('submit', async e => {
     const entry = {id: 'h' + Date.now(), ts: Date.now(), q, answer: data.answer, sources: data.sources || []};
     addHistory(entry);
     document.getElementById('a-temp')?.remove();
-    chat.insertAdjacentHTML('beforeend', exchangeHtml(entry));
+    chat.insertAdjacentHTML('afterbegin', exchangeHtml(entry, true));
     status.textContent = '';
   }catch(err){
     if(err.message !== 'unauthorized'){ status.className = 'status err'; status.textContent = 'השאלה נכשלה. נסה שוב בעוד רגע.'; }
   }finally{
     $('#a-submit').disabled = false;
-    window.scrollTo({top: document.body.scrollHeight});
+    $('#hist-wrap').scrollIntoView({block: 'start'});
   }
 });
 
@@ -547,21 +552,30 @@ $('#aform').addEventListener('submit', async e => {
 function getHistory(){ try{ return JSON.parse(localStorage.getItem(LS_HIST) || '[]'); }catch(e){ return []; } }
 function setHistory(h){ try{ localStorage.setItem(LS_HIST, JSON.stringify(h.slice(0, 50))); }catch(e){} }
 function addHistory(en){ const h = getHistory(); h.unshift(en); setHistory(h); }
-function exchangeHtml(en){
+function exchangeHtml(en, open){
   const srcs = (en.sources || []).map(s => `<a href="${esc(s.url)}" target="_blank" rel="noopener">🔗 ${esc(s.title)}</a>`).join('');
+  const d = new Date(en.ts || Date.now());
+  const when = d.toLocaleDateString('he-IL') + ' ' + d.toLocaleTimeString('he-IL', {hour: '2-digit', minute: '2-digit'});
   return `<div class="exchange" data-hist="${esc(en.id)}">
-    <div class="msg user">${esc(en.q)}</div>
-    <div class="msg ai">${esc(en.answer)}${srcs ? `<div class="srclinks">${srcs}</div>` : ''}
-      <div class="msg-actions">
-        <button type="button" data-dl="${esc(en.id)}">📄 הורד כ־Word</button>
-        <button type="button" data-del-hist="${esc(en.id)}">🗑 מחק</button>
+    <button type="button" class="hist-head" data-toggle-hist="${esc(en.id)}">
+      <span class="hist-q">${esc(en.q)}</span>
+      <span class="hist-date">${esc(when)}</span>
+      <span class="hist-chev2">${open ? '▾' : '▸'}</span>
+    </button>
+    <div class="hist-body${open ? '' : ' hidden'}">
+      <div class="msg user">${esc(en.q)}</div>
+      <div class="msg ai">${esc(en.answer)}${srcs ? `<div class="srclinks">${srcs}</div>` : ''}
+        <div class="msg-actions">
+          <button type="button" data-dl="${esc(en.id)}">📄 הורד כ־Word</button>
+          <button type="button" data-del-hist="${esc(en.id)}">🗑 מחק</button>
+        </div>
       </div>
     </div>
   </div>`;
 }
 function renderHistory(){
-  const h = getHistory().slice().reverse();
-  $('#chat').innerHTML = h.length ? h.map(exchangeHtml).join('') : '<div class="status">אין עדיין שיחות שמורות.</div>';
+  const h = getHistory();
+  $('#chat').innerHTML = h.length ? h.map((en, i) => exchangeHtml(en, i === 0)).join('') : '<div class="status">אין עדיין שיחות שמורות.</div>';
   const c = $('#hist-count');
   if(c) c.textContent = h.length ? h.length + ' שיחות שמורות במכשיר' : '';
 }
@@ -571,6 +585,16 @@ function setHistOpen(open){
 }
 $('#a-toggle-hist').addEventListener('click', () => setHistOpen($('#hist-wrap').classList.contains('hidden')));
 document.addEventListener('click', e => {
+  const tg = e.target.closest('[data-toggle-hist]');
+  if(tg){
+    const body = tg.closest('.exchange')?.querySelector('.hist-body');
+    if(body){
+      const nowHidden = body.classList.toggle('hidden');
+      const ch = tg.querySelector('.hist-chev2');
+      if(ch) ch.textContent = nowHidden ? '▸' : '▾';
+    }
+    return;
+  }
   const dl = e.target.closest('[data-dl]');
   if(dl){ const en = getHistory().find(x => x.id === dl.dataset.dl); if(en) downloadAnswerDocx(en); return; }
   const del = e.target.closest('[data-del-hist]');
@@ -830,7 +854,7 @@ $('#skform').addEventListener('submit', async e => {
       sources: data.sources || [],
     };
     addHistory(entry);
-    let html = exchangeHtml(entry);
+    let html = exchangeHtml(entry, true);
     if((data.files || []).length){
       html += `<div class="result"><h3>📁 קבצים שהסקיל יצר</h3><div class="links">` +
         data.files.map(f => `<button type="button" class="chip" data-file="${esc(f.id)}" data-fname="${esc(f.name || '')}">⬇ ${esc(f.name || 'קובץ')}</button>`).join('') +
