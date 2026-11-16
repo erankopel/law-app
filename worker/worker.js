@@ -85,12 +85,14 @@ function casePageUrl(r) {
 
 function trimVerdict(r) {
   return {
+    id: r.id || '',
     case_type: r.case_type || '', case_number: r.case_number || '',
     parties: stripHtml(r.parties || ''), court: r.court || '',
     judge: r.judge || '', decision_date: r.decision_date || '',
     decision_type: r.decision_type || '',
     snippet: stripHtml(r.snippet || '').slice(0, 400),
-    pdf_url: r.pdf_url || '', page_url: casePageUrl(r),
+    pdf_url: r.pdf_url || '',
+    page_url: r.id ? GN + '/verdict/' + r.id : casePageUrl(r),
   };
 }
 
@@ -191,8 +193,16 @@ async function handleAsk(request, env) {
   if (!question) return json({ error: 'empty_question' }, 400);
 
   const sources = [];
+  const model = String(env.MODEL || DEFAULT_MODEL);
+  const effortRaw = String(env.EFFORT || 'high').toLowerCase();
+  const effort = EFFORTS.includes(effortRaw) ? effortRaw : null;
   const messages = [{ role: 'user', content: question }];
   for (let round = 0; round < 5; round++) {
+    const payload = {
+      model, max_tokens: 8000, system: SYSTEM,
+      tools: TOOLS, messages,
+    };
+    if (effort) payload.output_config = { effort };
     const res = await fetch(ANTHROPIC, {
       method: 'POST',
       headers: {
@@ -200,10 +210,7 @@ async function handleAsk(request, env) {
         'x-api-key': env.ANTHROPIC_API_KEY,
         'anthropic-version': '2023-06-01',
       },
-      body: JSON.stringify({
-        model: MODEL, max_tokens: 2200, system: SYSTEM,
-        tools: TOOLS, messages,
-      }),
+      body: JSON.stringify(payload),
     });
     if (!res.ok) {
       const t = await res.text();
@@ -257,7 +264,7 @@ export default {
         const html = await wikiText(title);
         return json({ title, html });
       }
-      if (path === '/api/ask' && request.method === 'POST') return handleAsk(request, env);
+      if (path === '/api/ask' && request.method === 'POST') return await handleAsk(request, env);
       return json({ error: 'not_found' }, 404);
     } catch (e) {
       return json({ error: 'upstream', detail: String(e.message || e).slice(0, 200) }, 502);

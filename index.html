@@ -337,7 +337,8 @@ function verdictParams(page){
 function verdictCard(r){
   const title = [r.case_type, r.case_number].filter(Boolean).join(' ');
   const parties = decodeEntities(r.parties || '');
-  const gnUrl = 'https://www.giluy-naot.org.il/search?' + new URLSearchParams({case_number: r.case_number || '', ...(r.case_type ? {case_type: r.case_type} : {})});
+  const gnUrl = r.id ? 'https://www.giluy-naot.org.il/verdict/' + encodeURIComponent(r.id)
+    : 'https://www.giluy-naot.org.il/search?' + new URLSearchParams({case_number: r.case_number || '', ...(r.case_type ? {case_type: r.case_type} : {})});
   const key = bmKey('v', r.id);
   const on = isBookmarked('v', r.id);
   return `<div class="result">
