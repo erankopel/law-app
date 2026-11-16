@@ -575,7 +575,7 @@ function exchangeHtml(en, open){
 }
 function renderHistory(){
   const h = getHistory();
-  $('#chat').innerHTML = h.length ? h.map((en, i) => exchangeHtml(en, i === 0)).join('') : '<div class="status">אין עדיין שיחות שמורות.</div>';
+  $('#chat').innerHTML = h.length ? h.map(en => exchangeHtml(en, false)).join('') : '<div class="status">אין עדיין שיחות שמורות.</div>';
   const c = $('#hist-count');
   if(c) c.textContent = h.length ? h.length + ' שיחות שמורות במכשיר' : '';
 }
