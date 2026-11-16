@@ -675,6 +675,7 @@ function dxAnswerParas(md){
   }
   return out;
 }
+function dxClean(s){ return String(s ?? '').replace(/\s*—\s*/g, ', ').replace(/—/g, ','); }
 function buildAnswerDocx(en){
   const enc = new TextEncoder();
   const dateStr = new Date(en.ts || Date.now()).toLocaleString('he-IL');
@@ -682,16 +683,16 @@ function buildAnswerDocx(en){
   const rels = [];
   let body = '';
   body += dxPara(dxRun(title, {bold: true, size: 32}), {jc: 'center', after: 80});
-  body += dxPara(dxRun('שאלה: ' + en.q, {bold: true, size: 26}), {jc: 'start', after: 80});
+  body += dxPara(dxRun('שאלה: ' + dxClean(en.q), {bold: true, size: 26}), {jc: 'start', after: 80});
   body += dxPara(dxRun(dateStr + ' · נוצר באפליקציית משפטי (law.medicom.vip)', {size: 20, color: '666666'}), {jc: 'center', after: 240});
-  body += dxAnswerParas(en.answer).join('');
+  body += dxAnswerParas(dxClean(en.answer)).join('');
   const srcs = en.sources || [];
   if(srcs.length){
     body += dxPara(dxRun('אסמכתאות', {bold: true, size: 28}), {jc: 'start', after: 160});
     srcs.forEach((s, i) => {
       const rid = 'rId' + (i + 1);
       rels.push('<Relationship Id="' + rid + '" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink" Target="' + dxEsc(s.url) + '" TargetMode="External"/>');
-      body += dxPara(dxRun((s.title || 'מקור') + ' — ') + '<w:hyperlink r:id="' + rid + '">' + dxRun(s.url, {color: '0563C1', underline: true}) + '</w:hyperlink>', {jc: 'start'});
+      body += dxPara(dxRun((s.title || 'מקור') + ' · ') + '<w:hyperlink r:id="' + rid + '">' + dxRun(s.url, {color: '0563C1', underline: true}) + '</w:hyperlink>', {jc: 'start'});
     });
   }
   body += dxPara(dxRun('לתשומת לב: התשובה נוצרה בכלי מחקר מבוסס AI ואינה תחליף לקריאת קובץ המקור.', {size: 20, color: '666666'}), {jc: 'start', after: 0});
@@ -804,9 +805,13 @@ async function downloadSkillFile(id, name){
     const res = await apiFetch('/file?id=' + encodeURIComponent(id));
     if(!res.ok) throw new Error('http ' + res.status);
     const blob = await res.blob();
+    let fname = name || '';
+    const cd = res.headers.get('Content-Disposition') || '';
+    const m = cd.match(/filename\*=UTF-8''([^;]+)/) || cd.match(/filename="?([^";]+)"?/);
+    if(m){ try{ fname = decodeURIComponent(m[1]); }catch(e){ fname = m[1]; } }
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
-    a.download = name || 'skill-file';
+    a.download = fname || 'skill-file';
     document.body.appendChild(a); a.click(); a.remove();
     setTimeout(() => URL.revokeObjectURL(a.href), 4000);
   }catch(e){
