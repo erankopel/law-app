@@ -10,7 +10,8 @@
 const GN = 'https://www.giluy-naot.org.il';
 const WIKI_API = 'https://he.wikisource.org/w/api.php';
 const ANTHROPIC = 'https://api.anthropic.com/v1/messages';
-const MODEL = 'claude-sonnet-4-5';
+const DEFAULT_MODEL = 'claude-sonnet-5-5';
+const EFFORTS = ['low', 'medium', 'high', 'xhigh', 'max'];
 const UA = { 'User-Agent': 'law-app/1.0 (private legal research; contact: owner)' };
 
 function json(obj, status = 200) {
@@ -35,7 +36,31 @@ async function gnSearch(params) {
   return res.json();
 }
 
-async function gnLaws(search) {
+async function searchLaws(search) {
+  // Primary: Wikisource (the open law book) full-text search.
+  try {
+    const u = WIKI_API + '?action=query&list=search&srsearch=' + encodeURIComponent(search) +
+      '&srnamespace=0&srlimit=20&format=json&formatversion=2';
+    const res = await fetch(u, { headers: UA });
+    if (res.ok) {
+      const data = await res.json();
+      const hits = (data.query && data.query.search) || [];
+      if (hits.length) {
+        const items = hits.map(h => ({
+          id: h.title,
+          name: h.title,
+          law_type: '',
+          section_count: '',
+          updated_at: h.timestamp || '',
+          wikisource_url: 'https://he.wikisource.org/wiki/' + encodeURIComponent(h.title.replace(/ /g, '_')),
+          knesset_url: '',
+        }));
+        const total = (data.query.searchinfo && data.query.searchinfo.totalhits) || items.length;
+        return { items, total };
+      }
+    }
+  } catch (e) { /* fall through to Giluy Naot */ }
+  // Fallback: Giluy Naot laws list.
   const url = GN + '/api/laws?q=' + encodeURIComponent(search) + '&page=1';
   const res = await fetch(url, { headers: UA });
   if (!res.ok) throw new Error('gn laws ' + res.status);
@@ -91,7 +116,7 @@ const TOOLS = [
   },
   {
     name: 'search_laws',
-    description: 'חיפוש חוקים, תקנות וצווים במדור החקיקה של גילוי נאות (מבוסס על ספר החוקים הפתוח). מחזיר שם חוק, מספר סעיפים וקישורים.',
+    description: 'חיפוש חוקים, תקנות וצווים בספר החוקים הפתוח (ויקיטקסט), עם גיבוי במדור החקיקה של גילוי נאות. מחזיר שם חוק וקישורים.',
     input_schema: {
       type: 'object',
       properties: { search: { type: 'string', description: 'שם החוק או מילות חיפוש' } },
@@ -128,7 +153,7 @@ async function runTool(name, input, sources) {
     return { results };
   }
   if (name === 'search_laws') {
-    const data = await gnLaws(input.search);
+    const data = await searchLaws(input.search);
     const items = (data.items || []).slice(0, 8).map(l => ({
       name: l.name || '', law_type: l.law_type || '',
       section_count: l.section_count || '', updated_at: l.updated_at || '',
@@ -223,7 +248,7 @@ export default {
       }
       if (path === '/api/laws') {
         const search = url.searchParams.get('search') || '';
-        const data = await gnLaws(search);
+        const data = await searchLaws(search);
         return json(data);
       }
       if (path === '/api/law-text') {
