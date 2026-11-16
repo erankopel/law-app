@@ -565,7 +565,12 @@ async function handleSkillRoute(request, env) {
     const hit = mine.find(s => s.name === name) || mine.find(s => s.name.toLowerCase() === String(name).toLowerCase());
     if (hit && !picked.some(p => p.skill_id === hit.id)) picked.push({ skill_id: hit.id, type: 'custom', name: hit.name });
   }
-  return json({ skills: picked.slice(0, 4), reason });
+  const companion = mine.find(s => s.name === 'asmachtaot-bemismach');
+  if (companion && picked.length && !picked.some(p => p.skill_id === companion.id)) {
+    picked.push({ skill_id: companion.id, type: 'custom', name: companion.name });
+    reason = (reason ? reason + ' · ' : '') + 'צורף גם סקיל אימות האסמכתאות כמלווה';
+  }
+  return json({ skills: picked.slice(0, 5), reason });
 }
 
 async function handleFile(url, env) {
