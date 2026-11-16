@@ -265,6 +265,7 @@
         <button type="submit" class="btn" id="sk-submit">הרץ סקילים</button>
       </div>
     </form>
+    <div id="sk-run-status" class="status"></div>
     <div id="sk-results"></div>
   </section>
 
@@ -814,7 +815,8 @@ async function downloadSkillFile(id, name){
 }
 $('#skform').addEventListener('submit', async e => {
   e.preventDefault();
-  const status = $('#sk-status');
+  const status = $('#sk-run-status');
+  status.scrollIntoView({block: 'center'});
   const skills = [...selectedSkills.values()].map(s => ({skill_id: s.skill_id, type: s.type}));
   const names = [...selectedSkills.values()].map(s => SKILL_LABELS[s.name] || s.name);
   $('#sk-manual').value.split(',').map(s => s.trim()).filter(Boolean).forEach(id => {
@@ -839,8 +841,16 @@ $('#skform').addEventListener('submit', async e => {
     }
   }
   const material = $('#sk-material').value.trim();
-  status.className = 'status'; status.textContent = (routeNote ? routeNote + ' · ' : '') + 'הסקילים עובדים... הרצה עם סקיל עשויה לקחת דקה ויותר, לא לסגור את הדף.';
-  $('#sk-submit').disabled = true;
+  status.className = 'status'; status.textContent = (routeNote ? routeNote + ' · ' : '') + 'הסקילים עובדים...';
+  const btn = $('#sk-submit');
+  btn.disabled = true;
+  const btnLabel = btn.textContent;
+  btn.textContent = '⏳ עובד...';
+  const t0 = Date.now();
+  const timer = setInterval(() => {
+    const s = Math.round((Date.now() - t0) / 1000);
+    status.textContent = (routeNote ? routeNote + ' · ' : '') + 'הסקילים עובדים... ' + s + ' שנ׳ (הרצה יכולה לקחת דקה עד שלוש, לא לסגור את הדף)';
+  }, 1000);
   try{
     const res = await apiFetch('/skill-run', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({skills, task, material})});
     const data = await res.json().catch(() => ({}));
@@ -864,7 +874,9 @@ $('#skform').addEventListener('submit', async e => {
   }catch(err){
     if(err.message !== 'unauthorized'){ status.className = 'status err'; status.textContent = 'ההרצה נכשלה. נסה שוב בעוד רגע.'; }
   }finally{
-    $('#sk-submit').disabled = false;
+    clearInterval(timer);
+    btn.disabled = false;
+    btn.textContent = btnLabel;
   }
 });
 
