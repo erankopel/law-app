@@ -240,6 +240,7 @@ async function handleAsk(request, env) {
     const payload = {
       model, max_tokens: 8000, system: SYSTEM,
       tools: TOOLS, messages,
+      cache_control: { type: 'ephemeral' },
     };
     if (effort) payload.output_config = { effort };
     const res = await fetch(ANTHROPIC, {
@@ -376,6 +377,14 @@ const SKILL_TOOLS = [
   ...TOOLS,
 ];
 
+// Prompt caching: SKILL_SYSTEM (incl. the full kelalei-imut chapter) and the
+// tool definitions are byte-identical on every skill call, so mark the end of
+// that static prefix with an explicit cache breakpoint. Cache reads cost a
+// fraction of regular input tokens; the 5-minute TTL refreshes on every hit,
+// so an active run/step session stays warm. Payloads also carry a top-level
+// cache_control (automatic caching) so the growing conversation is cached too.
+const CACHED_SYSTEM = (text) => [{ type: 'text', text, cache_control: { type: 'ephemeral' } }];
+
 function collectFileIds(node, out) {
   if (!node || typeof node !== 'object') return;
   if (Array.isArray(node)) { for (const x of node) collectFileIds(x, out); return; }
@@ -410,11 +419,13 @@ async function handleSkillRun(request, env) {
   let answer = '';
   let lastStop = '';
   let lastTypes = '';
+  const usageTotals = { input_tokens: 0, output_tokens: 0, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 };
   for (let round = 0; round < 25; round++) {
     const container = containerId ? { id: containerId, skills } : { skills };
     const payload = {
-      model, max_tokens: 32000, system: SKILL_SYSTEM,
+      model, max_tokens: 32000, system: CACHED_SYSTEM(SKILL_SYSTEM),
       tools: SKILL_TOOLS, messages, container,
+      cache_control: { type: 'ephemeral' },
     };
     if (effort) payload.output_config = { effort };
     const res = await fetch(ANTHROPIC, {
@@ -427,6 +438,9 @@ async function handleSkillRun(request, env) {
       return json({ error: 'anthropic_' + res.status, detail: t.slice(0, 300) }, 502);
     }
     const data = await res.json();
+    if (data.usage) {
+      for (const k of Object.keys(usageTotals)) usageTotals[k] += data.usage[k] || 0;
+    }
     lastStop = data.stop_reason || '';
     lastTypes = (data.content || []).map(b => b.type).join(',');
     const roundText = (data.content || []).filter(b => b.type === 'text').map(b => b.text).join('\n').trim();
@@ -458,7 +472,7 @@ async function handleSkillRun(request, env) {
   if (!answer && !fileMap.size) {
     return json({ error: 'empty_run', detail: 'stop=' + lastStop + ' types=' + lastTypes }, 502);
   }
-  return json({ answer, sources: uniq.slice(0, 10), files: [...fileMap.values()].slice(0, 10) });
+  return json({ answer, sources: uniq.slice(0, 10), files: [...fileMap.values()].slice(0, 10), usage: usageTotals });
 }
 
 async function handleSkillStep(request, env) {
@@ -483,7 +497,7 @@ async function handleSkillStep(request, env) {
   const effortRaw = String(env.EFFORT || 'high').toLowerCase();
   const effort = EFFORTS.includes(effortRaw) ? effortRaw : null;
   const container = body.container_id ? { id: String(body.container_id), skills } : { skills };
-  const payload = { model, max_tokens: 32000, system: SKILL_SYSTEM, tools: SKILL_TOOLS, messages, container };
+  const payload = { model, max_tokens: 32000, system: CACHED_SYSTEM(SKILL_SYSTEM), tools: SKILL_TOOLS, messages, container, cache_control: { type: 'ephemeral' } };
   if (effort) payload.output_config = { effort };
   let res;
   try {
@@ -515,10 +529,10 @@ async function handleSkillStep(request, env) {
       }
     }
     messages.push({ role: 'user', content: results });
-    return json({ text, sources, files, container_id: containerId, messages, done: false, stop_reason: data.stop_reason || '' });
+    return json({ text, sources, files, container_id: containerId, messages, done: false, stop_reason: data.stop_reason || '', usage: data.usage || null });
   }
   const done = data.stop_reason !== 'pause_turn';
-  return json({ text, sources, files, container_id: containerId, messages, done, stop_reason: data.stop_reason || '' });
+  return json({ text, sources, files, container_id: containerId, messages, done, stop_reason: data.stop_reason || '', usage: data.usage || null });
 }
 
 const ROUTE_SYSTEM = [
