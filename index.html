@@ -857,7 +857,7 @@ $('#skform').addEventListener('submit', async e => {
     status.textContent = (routeNote ? routeNote + ' · ' : '') + 'הסקילים עובדים... ' + s + ' שנ׳ (הרצה יכולה לקחת דקה עד שלוש, לא לסגור את הדף)';
   }, 1000);
   try{
-    let messages = null, containerId = null, answer = '', stepSources = [], stepFiles = [], done = false;
+    let messages = null, containerId = null, answer = '', stepSources = [], stepFiles = [], done = false, cacheRead = 0;
     for(let step = 0; step < 40 && !done; step++){
       const res = await apiFetch('/skill-step', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({skills, task, material, messages, container_id: containerId})});
       const data = await res.json().catch(() => ({}));
@@ -867,6 +867,7 @@ $('#skform').addEventListener('submit', async e => {
       (data.sources || []).forEach(s => { if(!stepSources.some(x => x.url === s.url)) stepSources.push(s); });
       (data.files || []).forEach(f => { if(!stepFiles.some(x => x.id === f.id)) stepFiles.push(f); });
       messages = data.messages || messages;
+      if(data.usage) cacheRead += data.usage.cache_read_input_tokens || 0;
       done = !!data.done;
     }
     if(!answer && !stepFiles.length) throw new Error('bad response');
@@ -884,7 +885,7 @@ $('#skform').addEventListener('submit', async e => {
         `</div></div>`;
     }
     $('#sk-results').innerHTML = html;
-    status.textContent = 'הסתיים. ' + (routeNote ? routeNote + ' · ' : '') + 'התוצאה נשמרה גם בהיסטוריה בלשונית שאל AI.';
+    status.textContent = 'הסתיים. ' + (routeNote ? routeNote + ' · ' : '') + 'התוצאה נשמרה גם בהיסטוריה בלשונית שאל AI.' + (cacheRead ? ' · ⚡ מטמון: ' + cacheRead.toLocaleString('en-US') + ' טוקנים נקראו מהמטמון בהרצה זו.' : '');
   }catch(err){
     if(err.message !== 'unauthorized'){ status.className = 'status err'; status.textContent = 'ההרצה נכשלה: ' + err.message; }
   }finally{
